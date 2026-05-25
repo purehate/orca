@@ -1,268 +1,224 @@
-<div align="center">
-  <a><img width="320" height="320" alt="odoomap logo" src="https://github.com/user-attachments/assets/f55b8312-227e-4db8-82a6-300271758555" />
-</a>
-</div>
+# ORCA — Odoo Recon & Configuration Analyzer
 
-# OdooMap
-![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)
-![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
-![Python](https://img.shields.io/badge/Python-3.9-blue)
-![Last Commit](https://img.shields.io/github/last-commit/MohamedKarrab/odoomap)
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/cloudposse.svg?style=social&label=%20%40_karrab)](https://x.com/_Karrab)
-[![LinkedIn](https://img.shields.io/badge/-LinkedIn-black.svg?style=flat-square&logo=linkedin&colorB=555)](https://www.linkedin.com/in/mohamedkarrab/)
+**ORCA** is an unauthenticated, frontend-focused dynamic security scanner and network discovery tool for Odoo ERP instances. Designed for bug bounty hunters, penetration testers, and security teams who need to find shadow/dev deployments, exposed attack surface, and known vulnerabilities — all without credentials.
 
+> ⚠️ **Only test on systems you own or have explicit written permission to test.**
 
-**OdooMap** is a reconnaissance, enumeration, and security testing tool for [Odoo](https://www.odoo.com/) applications.
+---
 
 ## Features
 
-- Detect Odoo version and metadata
-- Enumerate databases, accessible models, installed modules, and model fields
-- Authenticate and check CRUD permissions
-- Extract data from specific models
-- Brute-force login credentials & Master password
-- Brute-force internal model names
-- Timing-based user enumeration via bcrypt oracle
-- Extensible plugin system for security assessments
+| Feature | Description |
+|---------|-------------|
+| **Unauthenticated-first** | Every check works without login credentials |
+| **Mass Network Discovery** | Scan `/16` networks, CIDR ranges, or host lists for Odoo instances |
+| **Shadow/Dev Hunt** | Flag unauthorized development boxes and staging deployments |
+| **Version Fingerprinting** | Detects Odoo version via HTML signatures, XML-RPC, JSON-RPC |
+| **Module Enumeration** | Discovers installed frontend modules via path probing + asset parsing |
+| **CVE Correlation** | Maps detected version + modules to known CVEs via NVD API |
+| **Attack Surface Discovery** | QWeb assets, custom controllers, GraphQL, RPC endpoints |
+| **Vulnerability Detection** | XSS, IDOR, open redirects, sensitive file exposure, debug mode, LFI, SSRF |
+| **Fuzzing Engine** | Parameter discovery and payload mutation for reflected injection |
+| **Multiple Outputs** | Rich console tables, JSON, CSV, and self-contained HTML reports |
+| **Stealth Controls** | Rate limiting, jitter, proxy support, SSL bypass |
 
-## Screenshots
-
-<img width="967" height="492" alt="odoomap usage" src="https://github.com/user-attachments/assets/e95c3eee-a665-4690-a4dd-36f1c4d8dbe3" />
-<p></p>
-cve-scanner plugin:
-
-<img width="1610" height="776" alt="Pasted image 20250831151646" src="https://github.com/user-attachments/assets/51ac477c-4883-4a51-abc7-8c09e6acad80" />
+---
 
 ## Installation
-> :information_source: It is advisable to use `pipx` over `pip` for system-wide installations.
-```bash
-git clone https://github.com/MohamedKarrab/odoomap.git && cd odoomap
-pipx ensurepath && pipx install .
-
-# Now restart your terminal and run
-odoomap -h
-
-# To update:
-pipx upgrade odoomap
-```
-*Or*
-```bash
-git clone https://github.com/MohamedKarrab/odoomap.git
-cd odoomap
-pip install -r requirements.txt
-python odoomap.py -h
-```
-
-## Usage Examples
-
-#### Basic Reconnaissance
 
 ```bash
-odoomap -u https://example.com
+git clone https://github.com/purehate/orca.git
+cd orca
+pip install -e .
 ```
 
-#### Authenticate and Enumerate Models
+Requires **Python ≥3.9**.
+
+---
+
+## Quick Start
+
+### Full Security Scan
 
 ```bash
-odoomap -u https://example.com -D database_name -U admin -P pass -e -l 200 -o models.txt
+orca -u https://target.odoo.com
 ```
 
-#### Check Model Permissions (Read, Write, Create, Delete)
+### Network Discovery — Find Odoo Instances
 
 ```bash
-odoomap -u https://example.com -D database_name -U test@example.com -P pass -e -pe -l 10
+# Scan a /24 network
+orca --discover -t 10.0.0.0/24
+
+# Scan a list of IPs from file
+orca --discover --target-file hosts.txt
+
+# Scan custom ports
+orca --discover -t 192.168.1.0/24 --ports 80,443,8069,8080
 ```
 
-#### Dump Data from Specific Models
+### Shadow/Dev Hunt — Find Unauthorized Instances
 
 ```bash
-odoomap -u https://example.com -D database_name -U admin -P pass -d res.users,res.partner -o ./output.txt
+# Discover + flag shadow dev boxes
+orca --discover -t 10.0.0.0/16 --shadow-hunt --threads 200 --timeout 3
+
+# Save results to JSON for SIEM
+orca --discover -t 10.0.0.0/16 --shadow-hunt -o findings.json --format json
 ```
 
-#### Dump Data from Model File
+### Targeted Security Checks
 
 ```bash
-odoomap -u https://example.com -D database_name -U admin -P pass -d models.txt -o ./dump
+# Run specific checks only
+orca -u https://target.odoo.com --checks xss,idor,misconfig
+
+# Minimum severity filter
+orca -u https://target.odoo.com --min-severity medium
+
+# Output formats
+orca -u https://target.odoo.com --format json -o report.json
+orca -u https://target.odoo.com --format html -o report.html
+orca -u https://target.odoo.com --format csv -o report.csv
+
+# Stealth mode
+orca -u https://target.odoo.com --rate 2 --jitter 30 --proxy http://127.0.0.1:8080
 ```
 
+---
 
-## Brute-force Options
+## Checks
 
-#### Brute-force Database Names
-Case-sensitive, but db names are generally lowercase.
-```bash
-odoomap -u https://example.com -n -N db-names.txt
-```
+| Check | Description |
+|-------|-------------|
+| `recon` | Version, database listing, WAF detection, module enumeration, signup exposure |
+| `endpoints` | QWeb assets, manifests, GraphQL, custom routes, CORS preflight |
+| `misconfig` | Debug mode, database manager, missing security headers, CORS misconfig |
+| `sensitive_files` | `.git`, `.env`, backups, configs, swagger, sitemaps |
+| `xss` | Reflected XSS on URL parameters, search fields, error pages |
+| `idor` | Unauthenticated `/web/content`, `/web/image`, `/web/pdf`, RPC read |
+| `auth_issues` | Session cookie flags, open redirects, password reset behavior |
+| `disclosure` | Error page analysis, `/website/info`, `base_import_module` leak |
+| `rpc_surface` | XML-RPC/JSON-RPC exposure, unauthenticated `call_kw` access |
+| `cve` | Correlate detected version + modules with NVD CVE database |
+| `fuzzer` | Parameter discovery and payload mutation on HTML forms |
+| `reports` | PDF report disclosure, CSV export, FEC export, invoice XSS |
+| `lfi` | Local File Inclusion via static file path abuse |
+| `ssrf` | SSRF via website URL fetch features and webhooks |
+| `exposure` | Dangerous modules: dbfilter, oauth, anonymization, payment tokens |
+| `source_leak` | Source code leak via asset path abuse |
 
-#### Default Credentials Attack
+---
 
-```bash
-odoomap -u https://example.com -D database_name -b
-```
+## Discovery Engine
 
-#### Custom User & Pass Files
+ORCA's discovery mode uses **10+ unique Odoo markers** to fingerprint instances across large networks:
 
-```bash
-odoomap -u https://example.com -D database_name -b --usernames users.txt --passwords passes.txt
-```
+- `var odoo = { ... }` JavaScript object
+- `csrf_token` in login forms
+- `data-website-id` HTML attributes
+- `/web/static/` and `/web/assets/` paths
+- `Login | <DatabaseName>` title pattern
+- `Werkzeug` Server header (dev instances)
+- `openerp.` legacy references
+- Odoo-specific CSS classes (`o_*`)
 
-#### User\:Pass Combo List
+XML-RPC version probes confirm ambiguous hosts.
 
-```bash
-odoomap -u https://example.com -D database_name -b -w wordlist.txt
-```
+### Shadow Hunt Indicators
 
-#### Brute-force Master Password
+| Indicator | Dev Box Signal |
+|-----------|---------------|
+| `werkzeug` | Running dev server (no reverse proxy) |
+| `debug_mode` | Debug UI enabled via `?debug=1` |
+| `db_manager` | Database manager exposed |
+| `db_listing` | Databases listable with dev/test/demo names |
+| `self_signed_ssl` | Invalid/self-signed certificate |
+| `dev_port` | Running on port 8069 or 8080 |
+| `open_registration` | Public signup enabled |
 
-```bash
-odoomap -u https://example.com -M -p pass_list.txt
-```
+---
 
-## Advanced Enumeration
+## Exit Codes
 
-#### Brute-force Model Names
+| Code | Meaning |
+|------|---------|
+| 0 | No findings |
+| 1 | Medium findings |
+| 2 | High findings |
+| 3 | Critical findings |
 
-```bash
-odoomap -u https://example.com -D database_name -U admin -P pass -e -B --model-file models.txt
-```
+---
 
-#### Recon + Enumeration + Dump
-
-```bash
-odoomap -u https://example.com -D database_name -U admin -P pass -r -e -pe -d res.users -o ./output
-```
-
-## Module & Field Enumeration
-
-#### Enumerate Installed Modules (Pre-Auth + Auth)
-
-```bash
-odoomap -u https://example.com --modules
-odoomap -u https://example.com -D database_name -U admin -P pass --modules
-```
-
-#### Enumerate Fields on a Model
-
-```bash
-odoomap -u https://example.com -D database_name -U admin -P pass --fields res.users
-```
-
-#### Timing-Based User Enumeration
-
-```bash
-odoomap -u https://example.com -D database_name --enum-users
-odoomap -u https://example.com -D database_name --enum-users --usernames custom_users.txt
-```
-
-## Plugin System
-
-#### List Available Plugins
-
-```bash
-odoomap --list-plugins
-```
-
-#### Run CVE Scanner Plugin
-
-```bash
-odoomap -u https://example.com --plugin cve-scanner
-```
-
-#### Run Old Odoo Privilege Escalation
-
-Attempts to escalate privileges on Odoo versions 9.0–14.x (requires authentication).
-
-```bash
-odoomap -u https://example.com -D database_name -U user -P pass --plugin old-odoo-privesc
-```
-
-#### Run Plugin with Authentication
-
-```bash
-odoomap -u https://example.com -D database_name -U admin -P pass --plugin cve-scanner
-```
-
-
-## Full Usage
+## Example Output
 
 ```
-usage: odoomap.py [-h] [-u URL] [-D DATABASE] [-U USERNAME] [-P [PASSWORD]] [-r] [-e] [-pe] [-l LIMIT] [-o OUTPUT]
-                  [-d DUMP] [-B] [--model-file MODEL_FILE] [--rate RATE] [--jitter PERCENT] [-b] [-w WORDLIST]
-                  [--usernames USERNAMES] [--passwords PASSWORDS] [-M] [-p MASTER_PASS] [-n] [-N DB_NAMES_FILE]
-                  [--enum-users] [--modules] [--fields MODEL] [--plugin PLUGIN] [--list-plugins]
+╭────────────── Scan Summary ───────────────╮
+│ Target: https://synergy.trustedsec.com    │
+│ Version: 18                               │
+│ Databases: trustedsec-production-12404823 │
+│ Modules: 6 detected                       │
+│ WAF: Cloudflare                           │
+╰───────────────────────────────────────────╯
 
-Odoo Security Assessment Tool
+HIGH (2)
+  idor: Unauthenticated attachment access (IDOR)
+  cve: Known CVE: CVE-2021-23178
 
-options:
-  -h, --help            show this help message and exit
-  -u, --url URL         Target Odoo server URL
-  -D, --database DATABASE
-                        Target database name
-  -U, --username USERNAME
-                        Username for authentication
-  -P, --password [PASSWORD]
-                        Password for authentication (prompts securely if no value provided)
-  -r, --recon           Perform initial reconnaissance
-  -e, --enumerate       Enumerate available model names
-  -pe, --permissions    Enumerate model permissions (requires -e)
-  -l, --limit LIMIT     Limit results for enumeration or dump operations
-  -o, --output OUTPUT   Output file for results
-  -d, --dump DUMP       Dump data from specified model(s); accepts a comma-separated list or a file path (containing one model per line)
-  -B, --bruteforce-models
-                        Bruteforce model names instead of listing them (default if listing fails)
-  --model-file MODEL_FILE
-                        File containing model names for bruteforcing (one per line)
-  --rate RATE           Maximum requests per second (default: unlimited, 0 = unlimited)
-  --jitter PERCENT      Add random jitter as percentage of rate (e.g., --jitter 20 for ±20%)
-  -b, --bruteforce      Bruteforce login credentials (requires -D)
-  -w, --wordlist WORDLIST
-                        Wordlist file for bruteforcing in user:pass format
-  --usernames USERNAMES
-                        File containing usernames for bruteforcing (one per line)
-  --passwords PASSWORDS
-                        File containing passwords for bruteforcing (one per line)
-  -M, --bruteforce-master
-                        Bruteforce the database's master password
-  -p, --master-pass MASTER_PASS
-                        Wordlist file for master password bruteforcing (one password per line)
-  -n, --brute-db-names  Bruteforce database names
-  -N, --db-names-file DB_NAMES_FILE
-                        File containing database names for bruteforcing (case-sensitive)
-  --enum-users           Timing-based user enumeration (requires -D)
-  --modules             Enumerate installed modules (pre-auth + auth)
-  --fields MODEL        Enumerate fields on a model (requires auth)
-  --plugin PLUGIN       Run a specific plugin by name (from odoomap/plugins/)
-  --list-plugins        List all available plugins with metadata
+MEDIUM (6)
+  recon: Database listing enabled
+  disclosure: Detailed error pages exposed
+  idor: Unauthenticated image access (IDOR)
+  fuzzer: Error disclosure via form fuzzing on /event
+  cve: Known CVE: CVE-2021-44775
+  cve: Known CVE: CVE-2018-15641
+
+LOW (3)
+  misconfig: Missing security headers
+  disclosure: /website/info page exposed
+  rpc_surface: JSON-RPC /jsonrpc exposed
 ```
 
-## Plugin Development
+---
 
-OdooMap features an extensible plugin system for custom security assessments. Plugins are located in `odoomap/plugins/` and follow a standardized interface.
+## Architecture
 
-### Built-in Plugins
+```
+orca/
+├── cli.py              # Entry point (scan / discover / shadow-hunt)
+├── core.py             # Threaded scanner engine
+├── discover.py         # Mass network discovery
+├── shadow_hunt.py      # Dev/shadow instance detection
+├── target.py           # HTTP session + Odoo helpers
+├── findings.py         # Severity / Finding / ScanResult dataclasses
+├── checks/             # 16 security check modules
+│   ├── recon.py
+│   ├── endpoints.py
+│   ├── misconfig.py
+│   ├── sensitive_files.py
+│   ├── xss.py
+│   ├── idor.py
+│   ├── auth_issues.py
+│   ├── disclosure.py
+│   ├── rpc_surface.py
+│   ├── cve.py
+│   ├── fuzzer.py
+│   ├── reports.py
+│   ├── lfi.py
+│   ├── ssrf.py
+│   ├── exposure.py
+│   └── source_leak.py
+├── reporters/          # Console, JSON, HTML, CSV
+├── data/               # Wordlists & payloads
+│   ├── odoo_paths.txt
+│   ├── controller_routes.txt
+│   ├── sensitive_paths.txt
+│   └── payloads/
+└── utils/              # Colors, HTTP helpers, WAF detection
+```
 
-- **CVE Scanner**: Searches for known CVEs affecting the detected Odoo version using the NVD database
-- **Old Odoo Privilege Escalation**: Attempts to escalate the authenticated user's privileges by exploiting arbitrary Python execution via safe_eval in Odoo versions 9.0–14.x 
-
-### Creating Custom Plugins
-
-1. Create a new Python file in `odoomap/plugins/`
-2. Inherit from `BasePlugin` class
-3. Implement required methods:
-   - `get_metadata()`: Return plugin information
-   - `run()`: Main plugin logic
+---
 
 ## License
 
-Apache License 2.0, see [LICENSE](https://github.com/MohamedKarrab/odoomap/blob/main/LICENSE)
-
-## Notice
-OdooMap is an independent project and is not affiliated with, endorsed by, or sponsored by Odoo S.A. or the official Odoo project in any way.
-
-## Disclaimer
-
-This tool is for lawful security and penetration testing with proper authorization. Unauthorized use is strictly prohibited. The author assumes no liability for any misuse or damage resulting from the use of this tool.
-
-## Contributions
-
-Feel free to open issues or submit pull requests for enhancements or bug fixes!
+Apache-2.0

