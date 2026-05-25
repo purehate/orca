@@ -4,29 +4,22 @@ from rich.console import Console
 
 
 BANNER_ART = r"""
-                                    .' '.
-                                  .'     '.
-                                 /  o   o  \         .---.
-                                |     ^     |      .'  o  '.
-                                 \   '-'   /      /  o   o  \
-                                  '. ___ .'      |   o   o   |
-                                    | |          |  .-----.  |
-                                    | |           \  'o o'  /
-                                    | |            '._____.'
-                                    | |               | |
-              _____                | |               | |
-         _.-~~     ~~-._           | |               | |
-       .'               '.        | |               | |
-      /   .--.     .--.   \      | |               | |
-     /  .'    \   /    '.  \     | |               | |
-    |  |  O    |_|    O  |  |    | |               | |
-    |  |   \   / \   /   |  |____| |_______________| |___
-     \  \   '-'   '-'   /  /    \ /                 \ /
-      \  '.__       __.'  /      V                   V
-       '-.   '-----'   .-'
-          '-._     _.-'          ~  ~  ~  ~  ~  ~  ~  ~
-              '---'           ~    ~    ~    ~    ~    ~
-                           ~  ~  ~  ~  ~  ~  ~  ~  ~  ~  ~
+                .--.   .--.   .--.   .--.
+                ( oo ) ( dd ) ( oo ) ( oo )
+                 '--'   '--'   '--'   '--'
+                        .'  .  '.
+                      .'  ,',.  '.
+                     ; .'  ;;  '. ;
+                      '    ;;    '
+                           ;'
+                           ;
+
+                            :._   _.------------.___
+                    __      :__:-'                  '--.
+             __   ,' .'    .'             ______________'.
+           /__ '.-  _\___.'          0  .' .'  .'  _.-_.'
+              '._                     .-': .' _.' _.'_.'
+                '----'._____________.'_'._:_:_.-'--'
 """
 
 
@@ -37,12 +30,16 @@ def print_banner(console: Console, version: str = "") -> None:
     for line in lines:
         if "~" in line:
             console.print(f"[blue]{line}[/blue]")
-        else:
-            # Color the spray dots
+        elif "'" in line or ";" in line or ":" in line or "." in line:
+            # Color the spray dots and spray shape
             styled = line.replace(".", "[cyan].[/cyan]")
-            # Color the o characters in spray (Odoo symbol)
-            styled = styled.replace("o", "[bold magenta]o[/bold magenta]")
+            styled = styled.replace(";", "[cyan];[/cyan]")
+            styled = styled.replace(":", "[cyan]:[/cyan]")
+            styled = styled.replace("'", "[cyan]'[/cyan]")
+            styled = styled.replace(",", "[cyan],[/cyan]")
             console.print(styled)
+        else:
+            console.print(line)
 
     console.print()
     ver = f"  v{version}" if version else ""
