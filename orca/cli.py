@@ -12,11 +12,17 @@ from orca.findings import Severity
 from orca.reporters import ConsoleReporter, JSONReporter, HTMLReporter
 from orca.shadow_hunt import hunt_shadow_instances
 from orca.target import Target
+from orca.utils.banner import print_banner
 
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="ORCA — Odoo Recon & Configuration Analyzer (unauthenticated frontend scanner)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Examples:\n"
+               "  orca -u https://target.odoo.com\n"
+               "  orca --discover -t 10.0.0.0/24 --shadow-hunt\n"
+               "  orca -u https://target.odoo.com --format html -o report.html",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
@@ -158,6 +164,10 @@ def run_discovery(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
+    if "--help" in sys.argv or "-h" in sys.argv or "--version" in sys.argv:
+        from rich.console import Console
+        print_banner(Console(), __version__)
+
     args = parse_arguments()
 
     if args.discover:
@@ -168,7 +178,7 @@ def main() -> None:
         sys.exit(1)
 
     reporter = ConsoleReporter()
-    reporter.print_banner(__version__)
+    print_banner(reporter.console, __version__)
 
     target = Target(
         url=args.url,
