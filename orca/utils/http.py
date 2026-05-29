@@ -6,13 +6,15 @@ from typing import Dict, List, Optional, Tuple
 import requests
 
 
-# Odoo-specific error signatures
+# Odoo-specific error signatures (tracebacks, internal errors)
+# These must NOT match normal HTML page content (data attributes, templates, etc.)
 ODOO_ERROR_SIGNATURES = [
     re.compile(r"Traceback\s+\(most recent call last\)", re.I),
-    re.compile(r"odoo\.(exceptions|models|http|api)", re.I),
+    re.compile(r"odoo\.(exceptions|models|http|api)\.", re.I),
     re.compile(r"psycopg2\.(OperationalError|ProgrammingError)", re.I),
     re.compile(r"FATAL:\s+database", re.I),
-    re.compile(r"ir\.(model|module|ui\.view|rule)", re.I),
+    # Only match ir.* in traceback/error contexts, not data-main-object attributes
+    re.compile(r"ir\.(model|module|ui\.view|rule)\b[^>]*$", re.MULTILINE),
     re.compile(r"QWeb\s+template\s+not\s+found", re.I),
 ]
 
@@ -67,11 +69,15 @@ def is_odoo_error_page(response: requests.Response) -> bool:
     """Check if response contains an Odoo traceback or error page.
 
     Ignores WAF/CDN block pages (502/503/504) to avoid false positives.
+    Also ignores normal 404 pages — only flags actual debug/traceback output.
     """
     if is_waf_block_page(response):
         return False
+    # 5xx responses are error pages; 404s are normal unless they contain tracebacks
     if response.status_code >= 500:
         return True
+    if response.status_code == 404:
+        return False
     text = response.text[:8192]
     for sig in ODOO_ERROR_SIGNATURES:
         if sig.search(text):
