@@ -2,7 +2,7 @@
 
 from orca.checks.base import BaseCheck
 from orca.findings import Severity
-from orca.utils.http import is_odoo_error_page
+from orca.utils.http import is_odoo_error_page, is_waf_block_page
 
 
 class DisclosureCheck(BaseCheck):
@@ -18,6 +18,9 @@ class DisclosureCheck(BaseCheck):
     def _check_error_pages(self) -> None:
         try:
             resp = self.target.get("/web/404_ORCA_TEST_NONEXISTENT", timeout=10)
+            # Skip WAF block pages — 503 from Cloudflare is not an Odoo error page
+            if is_waf_block_page(resp):
+                return
             if is_odoo_error_page(resp):
                 self.add_finding(
                     title="Detailed error pages exposed",

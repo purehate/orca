@@ -236,8 +236,9 @@ class ReconCheck(BaseCheck):
                 resp = self.target.get(path, timeout=8, allow_redirects=False)
                 status = resp.status_code
 
-                # Any non-404 response suggests the route exists
-                if status != 404:
+                # Only treat actual responses as existing routes.
+                # 5xx (especially 503 from WAF) are not evidence the route exists.
+                if status in (200, 301, 302, 307, 308, 400, 401, 403, 405, 415):
                     modules = ROUTE_TO_MODULE.get(path, [])
                     detected.update(modules)
 

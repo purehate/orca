@@ -2,6 +2,7 @@
 
 from orca.checks.base import BaseCheck
 from orca.findings import Severity
+from orca.utils.http import is_waf_block_page
 
 
 # SSRF payloads targeting internal services and protocol handlers
@@ -55,6 +56,9 @@ class SSRFCheck(BaseCheck):
                         "Cannot fetch", "Connection refused",
                         "xml version", "database",
                     ]
+                    # Skip WAF block pages and server errors — these are false positives
+                    if resp.status_code >= 500 or is_waf_block_page(resp):
+                        continue
                     if any(ind in text for ind in indicators) and resp.status_code != 403:
                         self.add_finding(
                             title=f"SSRF via {path}?{param}",

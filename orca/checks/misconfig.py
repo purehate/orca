@@ -80,6 +80,9 @@ class MisconfigCheck(BaseCheck):
     def _check_security_headers(self) -> None:
         try:
             resp = self.target.get("/", timeout=10)
+            # Skip header checks on WAF block pages or server errors
+            if resp.status_code >= 500:
+                return
             headers = resp.headers
             findings = []
 

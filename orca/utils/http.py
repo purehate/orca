@@ -55,8 +55,21 @@ def detect_odoo_version(text: str) -> Optional[str]:
     return None
 
 
+def is_waf_block_page(response: requests.Response) -> bool:
+    """Check if response is a WAF/CDN block page (503, 502, 504 with WAF signatures)."""
+    if response.status_code in (502, 503, 504):
+        if detect_waf(response):
+            return True
+    return False
+
+
 def is_odoo_error_page(response: requests.Response) -> bool:
-    """Check if response contains an Odoo traceback or error page."""
+    """Check if response contains an Odoo traceback or error page.
+
+    Ignores WAF/CDN block pages (502/503/504) to avoid false positives.
+    """
+    if is_waf_block_page(response):
+        return False
     if response.status_code >= 500:
         return True
     text = response.text[:8192]
