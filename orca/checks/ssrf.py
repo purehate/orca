@@ -56,10 +56,10 @@ class SSRFCheck(BaseCheck):
                         "Cannot fetch", "Connection refused",
                         "xml version", "database",
                     ]
-                    # Skip WAF block pages and server errors — these are false positives
-                    if resp.status_code >= 500 or is_waf_block_page(resp):
+                    # Skip WAF block pages, server errors, and 404s — these are false positives
+                    if resp.status_code >= 500 or resp.status_code == 404 or is_waf_block_page(resp):
                         continue
-                    if any(ind in text for ind in indicators) and resp.status_code != 403:
+                    if any(ind in text for ind in indicators) and resp.status_code not in (403, 404):
                         self.add_finding(
                             title=f"SSRF via {path}?{param}",
                             description=f"The parameter '{param}' on {path} may cause the server to fetch arbitrary URLs. Payload: {payload}",

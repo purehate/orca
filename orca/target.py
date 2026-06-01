@@ -78,7 +78,9 @@ class Target:
             url = f"https://{url}"
         self.url = url.rstrip("/")
         self.parsed = urlparse(self.url)
-        self.base_url = f"{self.parsed.scheme}://{self.parsed.netloc}"
+        # Preserve the URL path (e.g., /odoo) so instances mounted under
+        # a sub-path work correctly.
+        self.base_url = f"{self.parsed.scheme}://{self.parsed.netloc}{self.parsed.path}"
 
         self.session = ThrottledSession(
             rate_limit=rate_limit,
@@ -97,17 +99,28 @@ class Target:
     # Basic HTTP helpers
     # ------------------------------------------------------------------
 
+    def _join(self, path: str) -> str:
+        """Join path with base_url, preserving sub-path mounts.
+
+        urljoin('https://host/odoo/', '/web/login') drops the /odoo prefix
+        because the path is absolute. We strip the leading '/' to make it
+        relative so the sub-path is preserved.
+        """
+        if path.startswith("/"):
+            path = path[1:]
+        return urljoin(self.base_url + "/", path)
+
     def get(self, path: str, **kwargs) -> requests.Response:
-        return self.session.get(urljoin(self.base_url, path), **kwargs)
+        return self.session.get(self._join(path), **kwargs)
 
     def post(self, path: str, **kwargs) -> requests.Response:
-        return self.session.post(urljoin(self.base_url, path), **kwargs)
+        return self.session.post(self._join(path), **kwargs)
 
     def head(self, path: str, **kwargs) -> requests.Response:
-        return self.session.head(urljoin(self.base_url, path), **kwargs)
+        return self.session.head(self._join(path), **kwargs)
 
     def options(self, path: str, **kwargs) -> requests.Response:
-        return self.session.options(urljoin(self.base_url, path), **kwargs)
+        return self.session.options(self._join(path), **kwargs)
 
     # ------------------------------------------------------------------
     # Odoo-specific helpers
