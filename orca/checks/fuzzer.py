@@ -1,7 +1,6 @@
 """Lightweight fuzzing engine: form discovery + parameter mutation."""
 
-import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 from bs4 import BeautifulSoup
 

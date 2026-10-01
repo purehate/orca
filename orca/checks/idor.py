@@ -1,6 +1,5 @@
 """IDOR and unauthorized access checks."""
 
-import hashlib
 from typing import Dict, List, Tuple
 
 from orca.checks.base import BaseCheck

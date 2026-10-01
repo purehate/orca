@@ -105,7 +105,6 @@ CSS_CLASS_PREFIXES = {
     "o_purchase_": ["purchase"],
     # Sale
     "o_sale_": ["sale"],
-    "o_website_sale_": ["website_sale"],
     # Timesheet
     "o_timesheet_": ["hr_timesheet"],
     "o_hr_timesheet_": ["hr_timesheet"],
@@ -127,7 +126,6 @@ CSS_CLASS_PREFIXES = {
     # Loyalty
     "o_loyalty_": ["loyalty"],
     # Calendar (generic)
-    "o_website_calendar_": ["website_calendar"],
     "o_calendar_": ["calendar"],
     # Membership
     "o_membership_": ["membership"],
@@ -477,7 +475,6 @@ ROUTE_TO_MODULE = {
     "/shop/comparison": ["website_sale_comparison"],
     "/shop/slides": ["website_sale_slides"],
     "/shop/giftcard": ["website_sale_gift_card", "sale_gift_card"],
-    "/shop/confirmation": ["website_sale"],
     # Forum
     "/forum": ["website_forum"],
     "/forum/new": ["website_forum"],
@@ -595,7 +592,7 @@ ROUTE_TO_MODULE = {
     "/my/subscriptions": ["sale_subscription", "portal"],
     # Website core
     "/website/info": ["website"],
-    "/website/form": ["website"],
+    "/website/form": ["website", "website_form"],
     "/website/published": ["website"],
     "/website/attach": ["website"],
     "/website/lang": ["website"],
@@ -764,8 +761,6 @@ ROUTE_TO_MODULE = {
     "/web_pwa": ["web_pwa"],
     # Web Tour
     "/web_tour": ["web_tour"],
-    # Website Form
-    "/website/form": ["website_form"],
     # Website Livechat
     "/website_livechat": ["website_livechat"],
     # Website Rating

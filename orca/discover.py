@@ -8,8 +8,7 @@ import re
 import ssl
 import time
 import urllib3
-from typing import Dict, Iterator, List, Optional, Tuple
-from urllib.parse import urljoin
+from typing import Dict, Iterator, List, Optional
 
 import requests
 
@@ -92,7 +91,6 @@ def _probe_host(url: str, timeout: float = 3.0, verify_ssl: bool = False) -> Opt
         return None
 
     text = resp.text
-    lower_text = text.lower()
     headers = resp.headers
 
     # Quick reject: if it's tiny or clearly not HTML, skip
@@ -192,9 +190,8 @@ def discover_hosts(
     seen: set = set()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        future_to_url = {executor.submit(_probe_host, url, timeout, verify_ssl): url for url in urls}
-        for future in concurrent.futures.as_completed(future_to_url):
-            url = future_to_url[future]
+        futures = [executor.submit(_probe_host, url, timeout, verify_ssl) for url in urls]
+        for future in concurrent.futures.as_completed(futures):
             try:
                 result = future.result()
                 if result and result.url not in seen:

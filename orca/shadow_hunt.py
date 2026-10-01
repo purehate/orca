@@ -111,7 +111,6 @@ def _probe_shadow_indicators(url: str, timeout: float = 5.0) -> ShadowResult:
 
     # 4. Check for database listing
     try:
-        import json
         resp = requests.post(
             f"{url}/web/database/list",
             json={"jsonrpc": "2.0", "method": "call", "params": {}, "id": 1},

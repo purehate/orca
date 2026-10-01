@@ -1,7 +1,7 @@
 """HTTP helpers for response analysis and signature matching."""
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import requests
 
