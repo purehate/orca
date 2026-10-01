@@ -17,6 +17,7 @@
 | **Module Enumeration** | Discovers installed frontend modules via path probing + asset parsing |
 | **CVE Correlation** | Maps detected version + modules to known CVEs via NVD API |
 | **Attack Surface Discovery** | QWeb assets, custom controllers, GraphQL, RPC endpoints |
+| **Custom Surface Crawler** | Bounded same-origin GET crawler for custom pages, forms, and API/RPC references |
 | **Vulnerability Detection** | XSS, IDOR, open redirects, sensitive file exposure, debug mode, LFI, SSRF |
 | **Fuzzing Engine** | Parameter discovery and payload mutation for reflected injection |
 | **Multiple Outputs** | Rich console tables, JSON, CSV, and self-contained HTML reports |
@@ -85,6 +86,31 @@ orca -u https://target.odoo.com --format csv -o report.csv
 # Stealth mode
 orca -u https://target.odoo.com --rate 2 --jitter 30 --proxy http://127.0.0.1:8080
 ```
+
+### Custom Pages and APIs
+
+Start from one or more explicitly authorized paths and inventory the reachable
+same-origin surface:
+
+```bash
+orca -u https://target.odoo.com \
+  --include-path /quoteengine \
+  --crawl --crawl-max-pages 50 --crawl-depth 2 \
+  --rate 1 --threads 1
+```
+
+The crawler performs GET requests only. It never submits forms, follows links to
+another origin, or follows routes whose names indicate logout, deletion,
+checkout, payment, cancellation, or another likely state change. It records
+discovered pages, form actions, methods, and inline JavaScript API/RPC references
+under `artifacts.crawl` in JSON/evidence output. Included paths must be absolute
+same-origin paths; page and depth limits are enforced. When `--crawl` is used,
+ORCA defaults to one request per second and rejects rates above five requests per
+second, matching Odoo's published security-testing guidance.
+
+This is outside-in evidence, not proof that an OWASP category is vulnerability
+free. Source-aware authorization, data-flow, dependency, logging, and business
+logic review belongs in the companion internal code-review workflow.
 
 ### AI-Assisted Evidence Review
 
@@ -172,6 +198,8 @@ scan. `--fail-on-new` preserves a clean CI signal while known backlog remains.
 | `ssrf` | SSRF via website URL fetch features and webhooks |
 | `exposure` | Dangerous modules: dbfilter, oauth, anonymization, payment tokens |
 | `source_leak` | Source code leak via asset path abuse |
+| `page` | Inspect explicitly included HTML pages, forms, CSRF indicators, CSP, and mixed content |
+| `crawler` | Map bounded same-origin pages, forms, and referenced API/RPC endpoints |
 
 ---
 
@@ -258,7 +286,7 @@ orca/
 ├── target.py           # HTTP session + Odoo helpers
 ├── findings.py         # Severity / Finding / ScanResult dataclasses
 ├── ai/                 # Advisory model clients, validation, and evidence packets
-├── checks/             # 16 security check modules
+├── checks/             # Security check modules and custom-surface crawler
 │   ├── recon.py
 │   ├── endpoints.py
 │   ├── misconfig.py

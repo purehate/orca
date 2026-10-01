@@ -2,6 +2,7 @@
 
 import random
 import ssl
+import threading
 import time
 import urllib3
 from typing import Any, Dict, List, Optional
@@ -29,6 +30,7 @@ class ThrottledSession(requests.Session):
         self.rate_limit = rate_limit
         self.jitter = jitter
         self.last_request_time = 0.0
+        self._rate_lock = threading.Lock()
         self.verify = verify
 
         if proxy:
@@ -37,7 +39,8 @@ class ThrottledSession(requests.Session):
             self.headers.update(headers)
 
     def request(self, method: str, url: str, **kwargs) -> requests.Response:
-        self._throttle()
+        with self._rate_lock:
+            self._throttle()
         return super().request(method, url, **kwargs)
 
     def _throttle(self) -> None:

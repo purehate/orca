@@ -127,6 +127,7 @@ class ScanResult:
     target: TargetMeta = field(default_factory=TargetMeta)
     findings: List[Finding] = field(default_factory=list)
     scan_config: Dict[str, Any] = field(default_factory=dict)
+    artifacts: Dict[str, Any] = field(default_factory=dict)
     started_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -143,6 +144,7 @@ class ScanResult:
             "target": self.target.to_dict(),
             "findings": [f.to_dict() for f in self.findings],
             "scan_config": self.scan_config,
+            "artifacts": self.artifacts,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
         }

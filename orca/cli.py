@@ -7,6 +7,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from orca import __version__
 from orca.ai.analyzer import redact_untrusted_text
@@ -90,6 +91,29 @@ def parse_arguments() -> argparse.Namespace:
         "--min-severity",
         choices=[s.value for s in Severity],
         help="Minimum severity to report",
+    )
+    parser.add_argument(
+        "--include-path",
+        action="append",
+        default=[],
+        help="Authorized same-origin path to assess; repeat for multiple paths",
+    )
+    parser.add_argument(
+        "--crawl",
+        action="store_true",
+        help="Crawl same-origin links and inventory forms/API references with GET requests only",
+    )
+    parser.add_argument(
+        "--crawl-max-pages",
+        type=int,
+        default=50,
+        help="Maximum pages fetched by the crawler (default: 50, maximum: 200)",
+    )
+    parser.add_argument(
+        "--crawl-depth",
+        type=int,
+        default=2,
+        help="Maximum link depth from each included path (default: 2, maximum: 5)",
     )
 
     parser.add_argument("-o", "--output", help="Output file path")
@@ -179,6 +203,30 @@ def resolve_checks(args: argparse.Namespace):
         skip = {n.strip() for n in args.skip_checks.split(",")}
         checks = [c for c in checks if c.name not in skip]
     return checks
+
+
+def _validate_scan_scope(args: argparse.Namespace) -> Optional[str]:
+    """Validate bounded crawler inputs before any network traffic occurs."""
+    if not 1 <= args.crawl_max_pages <= 200:
+        return "--crawl-max-pages must be between 1 and 200"
+    if not 0 <= args.crawl_depth <= 5:
+        return "--crawl-depth must be between 0 and 5"
+    for path in args.include_path:
+        parsed = urlparse(path)
+        if (
+            not path.startswith("/")
+            or parsed.scheme
+            or parsed.netloc
+            or ".." in parsed.path
+            or any(character in path for character in ("\r", "\n", "\x00"))
+        ):
+            return f"--include-path must be a safe same-origin absolute path: {path!r}"
+    if args.crawl:
+        if args.rate is None:
+            args.rate = 1.0
+        elif args.rate <= 0 or args.rate > 5:
+            return "crawler rate must be greater than 0 and no more than 5 requests/second"
+    return None
 
 
 def run_discovery(args: argparse.Namespace) -> int:
@@ -323,12 +371,18 @@ def _build_replay_command(args: argparse.Namespace) -> str:
         ("--jitter", args.jitter),
         ("--threads", args.threads),
         ("--timeout", args.timeout),
+        ("--crawl-max-pages", args.crawl_max_pages),
+        ("--crawl-depth", args.crawl_depth),
     )
     for flag, value in value_options:
         if value is not None:
             command.extend([flag, str(value)])
     if args.verify_ssl:
         command.append("--verify-ssl")
+    for path in args.include_path:
+        command.extend(["--include-path", path])
+    if args.crawl:
+        command.append("--crawl")
     command.extend(["--format", "json", "--output", "replay-scan.json"])
     return shlex.join(command)
 
@@ -409,6 +463,11 @@ def main() -> None:
         print("Error: --url is required (or use --discover for network scanning)")
         sys.exit(1)
 
+    scope_error = _validate_scan_scope(args)
+    if scope_error:
+        print(f"Error: {scope_error}")
+        sys.exit(4)
+
     reporter = ConsoleReporter()
     print_banner(reporter.console, __version__)
 
@@ -428,6 +487,15 @@ def main() -> None:
         checks=checks,
         min_severity=min_sev,
         threads=args.threads,
+    )
+    scanner.result.scan_config.update(
+        {
+            "include_paths": list(args.include_path),
+            "crawl": args.crawl,
+            "crawl_max_pages": args.crawl_max_pages,
+            "crawl_depth": args.crawl_depth,
+            "rate": args.rate,
+        }
     )
 
     result = scanner.run()

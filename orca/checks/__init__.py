@@ -16,6 +16,8 @@ from orca.checks.lfi import LFICheck
 from orca.checks.ssrf import SSRFCheck
 from orca.checks.exposure import ExposureCheck
 from orca.checks.source_leak import SourceLeakCheck
+from orca.checks.page import PageCheck
+from orca.checks.crawler import CrawlerCheck
 
 ALL_CHECKS = [
     ReconCheck,
@@ -34,4 +36,6 @@ ALL_CHECKS = [
     SSRFCheck,
     ExposureCheck,
     SourceLeakCheck,
+    PageCheck,
+    CrawlerCheck,
 ]

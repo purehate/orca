@@ -168,6 +168,7 @@ def findings_for_review(result: ScanResult, delta: ScanDelta) -> ScanResult:
             if finding.fingerprint in fingerprints
         ],
         scan_config=dict(result.scan_config),
+        artifacts=dict(result.artifacts),
         started_at=result.started_at,
         completed_at=result.completed_at,
     )
