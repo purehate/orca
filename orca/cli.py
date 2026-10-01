@@ -1,15 +1,20 @@
 """ORCA CLI entry point."""
 
 import argparse
+import os
+import shlex
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from orca import __version__
+from orca.ai.analyzer import redact_untrusted_text
 from orca.checks import ALL_CHECKS
 from orca.core import Scanner
 from orca.discover import discover_hosts, expand_network
-from orca.findings import Severity
-from orca.reporters import ConsoleReporter, JSONReporter, HTMLReporter
+from orca.findings import ScanResult, Severity
+from orca.reporters import ConsoleReporter, HTMLReporter, JSONReporter
 from orca.shadow_hunt import hunt_shadow_instances
 from orca.target import Target
 from orca.utils.banner import print_banner
@@ -53,6 +58,50 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--proxy", help="HTTP proxy (e.g., http://127.0.0.1:8080)")
     parser.add_argument("--timeout", type=int, default=15, help="Request timeout in seconds")
     parser.add_argument("--verify-ssl", action="store_true", help="Verify SSL certificates")
+
+    # Advisory AI review
+    parser.add_argument(
+        "--ai",
+        action="store_true",
+        help="Review deterministic findings with a local or private model and write an evidence packet",
+    )
+    parser.add_argument(
+        "--ai-provider",
+        choices=["ollama", "openai-compatible"],
+        default=os.environ.get("ORCA_AI_PROVIDER", "ollama"),
+        help="Model API type (default: ORCA_AI_PROVIDER or ollama)",
+    )
+    parser.add_argument(
+        "--ai-model",
+        default=os.environ.get("ORCA_AI_MODEL"),
+        help="Model name (default: ORCA_AI_MODEL or qwen3:0.6b for Ollama)",
+    )
+    parser.add_argument(
+        "--ai-endpoint",
+        default=os.environ.get("ORCA_AI_ENDPOINT"),
+        help="Model API base URL (required for openai-compatible providers)",
+    )
+    parser.add_argument(
+        "--ai-api-key-env",
+        default="ORCA_AI_API_KEY",
+        help="Environment variable containing the model API key; its value is never persisted",
+    )
+    parser.add_argument(
+        "--ai-timeout",
+        type=float,
+        default=180.0,
+        help="Seconds allowed for each model review",
+    )
+    parser.add_argument(
+        "--ai-max-findings",
+        type=int,
+        default=25,
+        help="Maximum findings reviewed by the model, highest severity first",
+    )
+    parser.add_argument(
+        "--evidence-dir",
+        help="Directory for scan facts, AI review, prompts, responses, hashes, and replay guide",
+    )
 
     return parser.parse_args()
 
@@ -163,6 +212,67 @@ def run_discovery(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_replay_command(args: argparse.Namespace) -> str:
+    """Build a shell-safe replay command that never contains credentials."""
+    command = ["orca", "--url", redact_untrusted_text(args.url, 1_000)]
+    value_options = (
+        ("--checks", args.checks),
+        ("--skip-checks", args.skip_checks),
+        ("--min-severity", args.min_severity),
+        ("--rate", args.rate),
+        ("--jitter", args.jitter),
+        ("--threads", args.threads),
+        ("--timeout", args.timeout),
+    )
+    for flag, value in value_options:
+        if value is not None:
+            command.extend([flag, str(value)])
+    if args.verify_ssl:
+        command.append("--verify-ssl")
+    command.extend(["--format", "json", "--output", "replay-scan.json"])
+    return shlex.join(command)
+
+
+def _run_ai_review(args: argparse.Namespace, result: ScanResult) -> Optional[Path]:
+    """Run advisory review and persist a complete evidence packet."""
+    from rich.console import Console
+
+    from orca.ai import AIAnalyzer, EvidencePacketWriter, build_client
+
+    console = Console()
+    model = args.ai_model or "qwen3:0.6b"
+    try:
+        client = build_client(
+            provider=args.ai_provider,
+            model=model,
+            endpoint=args.ai_endpoint,
+            api_key_env=args.ai_api_key_env,
+            timeout=args.ai_timeout,
+        )
+        analyzer = AIAnalyzer(client, max_findings=args.ai_max_findings)
+        review, prompts, responses = analyzer.review(result)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        output_dir = Path(args.evidence_dir or f"orca-evidence-{timestamp}")
+        manifest = EvidencePacketWriter().write(
+            output_dir=output_dir,
+            result=result,
+            review=review,
+            prompts=prompts,
+            responses=responses,
+            replay_command=_build_replay_command(args),
+        )
+    except (ValueError, OSError) as exc:
+        error = redact_untrusted_text(str(exc), 2_000)
+        console.print(f"[red][-][/red] AI review could not be completed: {error}")
+        return None
+
+    color = "green" if review.status == "complete" else "yellow"
+    console.print(
+        f"[{color}][+][/{color}] AI review {review.status}; evidence packet: {manifest.parent}"
+    )
+    return manifest
+
+
 def main() -> None:
     if "--help" in sys.argv or "-h" in sys.argv or "--version" in sys.argv:
         from rich.console import Console
@@ -199,6 +309,9 @@ def main() -> None:
     )
 
     result = scanner.run()
+
+    if args.ai:
+        _run_ai_review(args, result)
 
     if args.format == "console":
         reporter.print_result(result)

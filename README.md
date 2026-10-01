@@ -20,6 +20,7 @@
 | **Vulnerability Detection** | XSS, IDOR, open redirects, sensitive file exposure, debug mode, LFI, SSRF |
 | **Fuzzing Engine** | Parameter discovery and payload mutation for reflected injection |
 | **Multiple Outputs** | Rich console tables, JSON, CSV, and self-contained HTML reports |
+| **AI Evidence Review** | Optional local/private model validation with six evidence gates and tamper-evident review packets |
 | **Stealth Controls** | Rate limiting, jitter, proxy support, SSL bypass |
 
 ---
@@ -84,6 +85,54 @@ orca -u https://target.odoo.com --format csv -o report.csv
 # Stealth mode
 orca -u https://target.odoo.com --rate 2 --jitter 30 --proxy http://127.0.0.1:8080
 ```
+
+### AI-Assisted Evidence Review
+
+ORCA can send its deterministic findings to a local or private model for advisory
+triage. The model cannot remove findings or alter scanner exit codes. Each result
+must address six validation gates: observed behavior, reachability, authorization
+context, exploitability, impact, and false-positive checks.
+
+With local Ollama:
+
+```bash
+ollama pull qwen3:0.6b
+orca -u https://target.odoo.com --ai \
+  --evidence-dir evidence/external-review
+```
+
+With a private OpenAI-compatible endpoint (including vLLM):
+
+```bash
+export ORCA_AI_PROVIDER=openai-compatible
+export ORCA_AI_ENDPOINT=http://private-model.example:8000/v1
+export ORCA_AI_MODEL=your-model-name
+export ORCA_AI_API_KEY='set-this-only-if-your-endpoint-requires-it'
+
+orca -u https://target.odoo.com --ai \
+  --evidence-dir evidence/external-review
+```
+
+API keys are read only from the named environment variable and are never written
+to artifacts. Common authorization headers, cookies, tokens, passwords, and URL
+credentials are redacted before model use and packet persistence. HTTP response
+content is treated as untrusted data so a target page cannot instruct the model.
+
+The evidence directory contains:
+
+| Artifact | Purpose |
+|----------|---------|
+| `scan.json` | Redacted deterministic scanner facts with stable finding IDs |
+| `ai-review.json` | Machine-readable advisory verdicts, gates, uncertainty, and fix guidance |
+| `ai-review.md` | Human-readable review from observation through remediation |
+| `prompts/` and `responses/` | Auditable, per-finding model inputs and outputs |
+| `replay.md` | Credential-free scan command and human verification checklist |
+| `manifest.json` | SHA-256 hashes tying every artifact to the packet |
+
+The default cap is 25 findings, highest severity first. Use
+`--ai-max-findings`, `--ai-timeout`, `--ai-model`, and `--ai-endpoint` to tune
+the lane. A model outage or malformed response is recorded as `partial` or
+`failed`; the original findings remain intact.
 
 ---
 
@@ -191,6 +240,7 @@ orca/
 ├── shadow_hunt.py      # Dev/shadow instance detection
 ├── target.py           # HTTP session + Odoo helpers
 ├── findings.py         # Severity / Finding / ScanResult dataclasses
+├── ai/                 # Advisory model clients, validation, and evidence packets
 ├── checks/             # 16 security check modules
 │   ├── recon.py
 │   ├── endpoints.py
