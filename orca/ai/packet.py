@@ -7,11 +7,12 @@ import json
 import platform
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
 
 from orca import __version__
 from orca.ai.analyzer import redact_untrusted_text, sanitize_artifact
 from orca.ai.models import AIReviewReport, FindingReview
+from orca.baseline import ScanDelta
 from orca.findings import ScanResult
 
 
@@ -26,6 +27,7 @@ class EvidencePacketWriter:
         prompts: Dict[str, str],
         responses: Dict[str, str],
         replay_command: str,
+        delta: Optional[ScanDelta] = None,
     ) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
         prompt_dir = output_dir / "prompts"
@@ -45,6 +47,11 @@ class EvidencePacketWriter:
             self._write_text(prompt_dir / f"{finding_id}.txt", prompt)
         for finding_id, response in responses.items():
             self._write_text(response_dir / f"{finding_id}.txt", response)
+        if delta:
+            self._write_json(
+                output_dir / "delta.json", sanitize_artifact(delta.to_dict())
+            )
+            self._write_text(output_dir / "delta.md", self._render_delta(delta))
 
         manifest_path = output_dir / "manifest.json"
         artifacts = self._artifact_hashes(output_dir, excluded={manifest_path})
@@ -212,3 +219,33 @@ class EvidencePacketWriter:
                 "",
             ]
         )
+
+    @staticmethod
+    def _render_delta(delta: ScanDelta) -> str:
+        lines = [
+            "# Finding Delta",
+            "",
+            f"- Baseline: `{redact_untrusted_text(delta.baseline_path, 2_000)}`",
+            f"- New: **{len(delta.new)}**",
+            f"- Fixed: **{len(delta.fixed)}**",
+            f"- Changed: **{len(delta.changed)}**",
+            f"- Unchanged: **{len(delta.unchanged)}**",
+            "",
+        ]
+        sections = (
+            ("New", delta.new),
+            ("Fixed", delta.fixed),
+            ("Changed", [item["after"] for item in delta.changed]),
+        )
+        for heading, findings in sections:
+            lines.extend([f"## {heading}", ""])
+            if not findings:
+                lines.extend(["None.", ""])
+                continue
+            for finding in findings:
+                title = redact_untrusted_text(str(finding["title"]), 1_000)
+                lines.append(
+                    f"- `{finding['id']}` [{finding['severity'].upper()}] {title}"
+                )
+            lines.append("")
+        return "\n".join(lines)

@@ -6,6 +6,7 @@ from test_ai_analyzer import FakeClient, _response
 
 from orca.ai.analyzer import AIAnalyzer
 from orca.ai.packet import EvidencePacketWriter
+from orca.baseline import compare_to_baseline
 from orca.findings import Evidence, Finding, ScanResult, Severity, TargetMeta
 
 
@@ -105,3 +106,34 @@ def test_packet_redacts_credentials_from_scan_and_markdown(tmp_path: Path) -> No
             content = path.read_text(encoding="utf-8")
             assert "secret-token" not in content
             assert "private-session" not in content
+
+
+def test_packet_includes_baseline_delta(tmp_path: Path) -> None:
+    old = Finding(
+        check_name="test",
+        title="Fixed finding",
+        description="Old issue",
+        severity=Severity.HIGH,
+        target="https://example.test",
+    )
+    baseline_dir = tmp_path / "baseline"
+    baseline_dir.mkdir()
+    with (baseline_dir / "scan.json").open("w", encoding="utf-8") as handle:
+        json.dump({"findings": [old.to_dict()]}, handle)
+    result = ScanResult(target=TargetMeta(url="https://example.test"))
+    review, prompts, responses = AIAnalyzer(FakeClient(_response())).review(result)
+
+    EvidencePacketWriter().write(
+        output_dir=tmp_path / "packet",
+        result=result,
+        review=review,
+        prompts=prompts,
+        responses=responses,
+        replay_command="orca --url https://example.test",
+        delta=compare_to_baseline(result, baseline_dir),
+    )
+
+    assert (tmp_path / "packet" / "delta.json").is_file()
+    assert "Fixed: **1**" in (tmp_path / "packet" / "delta.md").read_text(
+        encoding="utf-8"
+    )

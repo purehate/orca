@@ -128,11 +128,27 @@ The evidence directory contains:
 | `prompts/` and `responses/` | Auditable, per-finding model inputs and outputs |
 | `replay.md` | Credential-free scan command and human verification checklist |
 | `manifest.json` | SHA-256 hashes tying every artifact to the packet |
+| `delta.json` / `delta.md` | Baseline comparison when `--baseline` is supplied |
 
 The default cap is 25 findings, highest severity first. Use
 `--ai-max-findings`, `--ai-timeout`, `--ai-model`, and `--ai-endpoint` to tune
 the lane. A model outage or malformed response is recorded as `partial` or
 `failed`; the original findings remain intact.
+
+For recurring assessments, compare against the prior packet and gate only newly
+introduced or severity-increased findings:
+
+```bash
+orca -u https://target.odoo.com --ai \
+  --baseline evidence/previous-review \
+  --fail-on-new high \
+  --evidence-dir evidence/current-review
+```
+
+This adds `delta.json` and `delta.md` with new, fixed, changed, and unchanged
+findings. When a baseline is present, the model spends time only on new and
+materially changed findings; the packet still retains the complete deterministic
+scan. `--fail-on-new` preserves a clean CI signal while known backlog remains.
 
 ---
 
@@ -196,6 +212,7 @@ XML-RPC version probes confirm ambiguous hosts.
 | 1 | Medium findings |
 | 2 | High findings |
 | 3 | Critical findings |
+| 4 | Invalid baseline or delta-gate configuration |
 
 ---
 

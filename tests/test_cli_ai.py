@@ -1,6 +1,7 @@
 import argparse
 
-from orca.cli import _build_replay_command
+from orca.cli import _build_replay_command, _exit_code
+from orca.findings import Finding, Severity
 
 
 def test_replay_command_excludes_credentials_and_ai_connection_details() -> None:
@@ -28,3 +29,13 @@ def test_replay_command_excludes_credentials_and_ai_connection_details() -> None
     assert "private-model" not in command
     assert "[REDACTED]@example.test/odoo" in command
     assert "--checks idor,misconfig" in command
+
+
+def test_exit_code_preserves_scanner_severity_contract() -> None:
+    high = Finding("test", "high", "", Severity.HIGH)
+    medium = Finding("test", "medium", "", Severity.MEDIUM)
+    low = Finding("test", "low", "", Severity.LOW)
+
+    assert _exit_code([high]) == 2
+    assert _exit_code([medium]) == 1
+    assert _exit_code([low]) == 0

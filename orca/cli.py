@@ -10,6 +10,12 @@ from typing import Optional
 
 from orca import __version__
 from orca.ai.analyzer import redact_untrusted_text
+from orca.baseline import (
+    BaselineError,
+    ScanDelta,
+    compare_to_baseline,
+    findings_for_review,
+)
 from orca.checks import ALL_CHECKS
 from orca.core import Scanner
 from orca.discover import discover_hosts, expand_network
@@ -25,39 +31,87 @@ def parse_arguments() -> argparse.Namespace:
         description="ORCA — Odoo Recon & Configuration Analyzer (unauthenticated frontend scanner)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n"
-               "  orca -u https://target.odoo.com\n"
-               "  orca --discover -t 10.0.0.0/24 --shadow-hunt\n"
-               "  orca -u https://target.odoo.com --format html -o report.html",
+        "  orca -u https://target.odoo.com\n"
+        "  orca --discover -t 10.0.0.0/24 --shadow-hunt\n"
+        "  orca -u https://target.odoo.com --format html -o report.html",
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
 
     # Discovery mode
-    parser.add_argument("--discover", action="store_true", help="Discovery mode: scan networks/hosts for Odoo instances")
-    parser.add_argument("-t", "--target", help="Target IP, CIDR range, or hostname (e.g., 10.0.0.0/16)")
-    parser.add_argument("--target-file", help="File containing list of hosts/IPs (one per line)")
-    parser.add_argument("--ports", default="80,443,8069,8080,8443", help="Comma-separated ports to probe (default: 80,443,8069,8080,8443)")
-    parser.add_argument("--probe-xmlrpc", action="store_true", default=True, help="Confirm ambiguous hosts with XML-RPC version probe")
-    parser.add_argument("--shadow-hunt", action="store_true", help="Flag shadow/dev instances (requires --discover)")
+    parser.add_argument(
+        "--discover",
+        action="store_true",
+        help="Discovery mode: scan networks/hosts for Odoo instances",
+    )
+    parser.add_argument(
+        "-t", "--target", help="Target IP, CIDR range, or hostname (e.g., 10.0.0.0/16)"
+    )
+    parser.add_argument(
+        "--target-file", help="File containing list of hosts/IPs (one per line)"
+    )
+    parser.add_argument(
+        "--ports",
+        default="80,443,8069,8080,8443",
+        help="Comma-separated ports to probe (default: 80,443,8069,8080,8443)",
+    )
+    parser.add_argument(
+        "--probe-xmlrpc",
+        action="store_true",
+        default=True,
+        help="Confirm ambiguous hosts with XML-RPC version probe",
+    )
+    parser.add_argument(
+        "--shadow-hunt",
+        action="store_true",
+        help="Flag shadow/dev instances (requires --discover)",
+    )
 
     # Standard scan mode
     parser.add_argument("-u", "--url", help="Target Odoo URL")
-    parser.add_argument("-D", "--database", help="Database name (for authenticated checks)")
+    parser.add_argument(
+        "-D", "--database", help="Database name (for authenticated checks)"
+    )
     parser.add_argument("-U", "--username", help="Username (for authenticated checks)")
-    parser.add_argument("-P", "--password", nargs="?", const="", help="Password (for authenticated checks)")
+    parser.add_argument(
+        "-P",
+        "--password",
+        nargs="?",
+        const="",
+        help="Password (for authenticated checks)",
+    )
 
-    parser.add_argument("--checks", help="Comma-separated list of checks to run (default: all)")
+    parser.add_argument(
+        "--checks", help="Comma-separated list of checks to run (default: all)"
+    )
     parser.add_argument("--skip-checks", help="Comma-separated list of checks to skip")
-    parser.add_argument("--min-severity", choices=[s.value for s in Severity], help="Minimum severity to report")
+    parser.add_argument(
+        "--min-severity",
+        choices=[s.value for s in Severity],
+        help="Minimum severity to report",
+    )
 
     parser.add_argument("-o", "--output", help="Output file path")
-    parser.add_argument("--format", choices=["console", "json", "html", "csv"], default="console", help="Output format")
+    parser.add_argument(
+        "--format",
+        choices=["console", "json", "html", "csv"],
+        default="console",
+        help="Output format",
+    )
 
     parser.add_argument("--rate", type=float, help="Max requests per second")
     parser.add_argument("--jitter", type=float, help="Request jitter percentage")
-    parser.add_argument("--threads", type=int, default=10, help="Concurrent check threads")
+    parser.add_argument(
+        "--threads", type=int, default=10, help="Concurrent check threads"
+    )
     parser.add_argument("--proxy", help="HTTP proxy (e.g., http://127.0.0.1:8080)")
-    parser.add_argument("--timeout", type=int, default=15, help="Request timeout in seconds")
-    parser.add_argument("--verify-ssl", action="store_true", help="Verify SSL certificates")
+    parser.add_argument(
+        "--timeout", type=int, default=15, help="Request timeout in seconds"
+    )
+    parser.add_argument(
+        "--verify-ssl", action="store_true", help="Verify SSL certificates"
+    )
 
     # Advisory AI review
     parser.add_argument(
@@ -102,6 +156,15 @@ def parse_arguments() -> argparse.Namespace:
         "--evidence-dir",
         help="Directory for scan facts, AI review, prompts, responses, hashes, and replay guide",
     )
+    parser.add_argument(
+        "--baseline",
+        help="Prior scan.json or evidence directory used to classify new, fixed, and changed findings",
+    )
+    parser.add_argument(
+        "--fail-on-new",
+        choices=[severity.value for severity in Severity if severity != Severity.INFO],
+        help="Exit non-zero only for new or severity-increased findings at or above this level",
+    )
 
     return parser.parse_args()
 
@@ -120,6 +183,7 @@ def resolve_checks(args: argparse.Namespace):
 
 def run_discovery(args: argparse.Namespace) -> int:
     from rich.console import Console
+
     console = Console()
 
     hosts = []
@@ -134,14 +198,18 @@ def run_discovery(args: argparse.Namespace) -> int:
         with open(args.target_file, "r") as f:
             hosts = [line.strip() for line in f if line.strip()]
     else:
-        console.print("[red][-][/red] Discovery mode requires --target or --target-file")
+        console.print(
+            "[red][-][/red] Discovery mode requires --target or --target-file"
+        )
         return 1
 
     ports = [int(p.strip()) for p in args.ports.split(",")]
     threads = args.threads
     timeout = args.timeout
 
-    console.print(f"[cyan][*][/cyan] Starting discovery on {len(hosts)} host(s), ports {ports}")
+    console.print(
+        f"[cyan][*][/cyan] Starting discovery on {len(hosts)} host(s), ports {ports}"
+    )
     console.print(f"[cyan][*][/cyan] Threads: {threads}, Timeout: {timeout}s")
 
     results = discover_hosts(
@@ -165,25 +233,41 @@ def run_discovery(args: argparse.Namespace) -> int:
     low = [r for r in results if r.confidence == "low"]
 
     for r in high:
-        console.print(f"[green][HIGH][/green] {r.url}  |  ver={r.version or '?'}  |  title='{r.title or '?'}'  |  db='{r.db_hint or '?'}'  |  werkzeug={r.werkzeug}  |  waf={r.waf or 'none'}")
+        console.print(
+            f"[green][HIGH][/green] {r.url}  |  ver={r.version or '?'}  |  title='{r.title or '?'}'  |  db='{r.db_hint or '?'}'  |  werkzeug={r.werkzeug}  |  waf={r.waf or 'none'}"
+        )
     for r in med:
-        console.print(f"[yellow][MED][/yellow]  {r.url}  |  ver={r.version or '?'}  |  title='{r.title or '?'}'")
+        console.print(
+            f"[yellow][MED][/yellow]  {r.url}  |  ver={r.version or '?'}  |  title='{r.title or '?'}'"
+        )
     for r in low:
         console.print(f"[dim][LOW][/dim]   {r.url}")
 
     # Shadow hunt
     if args.shadow_hunt:
-        console.print(f"\n[cyan][*][/cyan] Running shadow-hunt probes on {len(results)} discovered host(s)...")
+        console.print(
+            f"\n[cyan][*][/cyan] Running shadow-hunt probes on {len(results)} discovered host(s)..."
+        )
         shadow_results = hunt_shadow_instances(
             urls=[r.url for r in results],
             threads=args.threads,
             timeout=args.timeout,
         )
         if shadow_results:
-            console.print(f"\n[red][!][/red] Found {len(shadow_results)} potential shadow/dev instance(s):\n")
+            console.print(
+                f"\n[red][!][/red] Found {len(shadow_results)} potential shadow/dev instance(s):\n"
+            )
             for sr in shadow_results:
-                color = "red" if sr.confidence == "high" else "yellow" if sr.confidence == "medium" else "white"
-                console.print(f"[{color}][{sr.confidence.upper()}][/[{color}]] {sr.url}")
+                color = (
+                    "red"
+                    if sr.confidence == "high"
+                    else "yellow"
+                    if sr.confidence == "medium"
+                    else "white"
+                )
+                console.print(
+                    f"[{color}][{sr.confidence.upper()}][/[{color}]] {sr.url}"
+                )
                 for note in sr.notes:
                     console.print(f"    - {note}")
                 console.print()
@@ -193,20 +277,36 @@ def run_discovery(args: argparse.Namespace) -> int:
     if args.output:
         if args.format == "json":
             import json
+
             out = json.dumps([r.to_dict() for r in results], indent=2)
             with open(args.output, "w") as f:
                 f.write(out)
         elif args.format == "csv":
             import csv
+
             with open(args.output, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=["url", "version", "title", "db_hint", "werkzeug", "waf", "confidence", "response_time_ms"])
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=[
+                        "url",
+                        "version",
+                        "title",
+                        "db_hint",
+                        "werkzeug",
+                        "waf",
+                        "confidence",
+                        "response_time_ms",
+                    ],
+                )
                 writer.writeheader()
                 for r in results:
                     writer.writerow(r.to_dict())
         else:
             with open(args.output, "w") as f:
                 for r in results:
-                    f.write(f"{r.confidence}\t{r.url}\t{r.version or ''}\t{r.title or ''}\n")
+                    f.write(
+                        f"{r.confidence}\t{r.url}\t{r.version or ''}\t{r.title or ''}\n"
+                    )
         console.print(f"\n[green][+][/green] Results saved to {args.output}")
 
     return 0
@@ -233,7 +333,11 @@ def _build_replay_command(args: argparse.Namespace) -> str:
     return shlex.join(command)
 
 
-def _run_ai_review(args: argparse.Namespace, result: ScanResult) -> Optional[Path]:
+def _run_ai_review(
+    args: argparse.Namespace,
+    result: ScanResult,
+    delta: Optional[ScanDelta] = None,
+) -> Optional[Path]:
     """Run advisory review and persist a complete evidence packet."""
     from rich.console import Console
 
@@ -250,7 +354,8 @@ def _run_ai_review(args: argparse.Namespace, result: ScanResult) -> Optional[Pat
             timeout=args.ai_timeout,
         )
         analyzer = AIAnalyzer(client, max_findings=args.ai_max_findings)
-        review, prompts, responses = analyzer.review(result)
+        review_input = findings_for_review(result, delta) if delta else result
+        review, prompts, responses = analyzer.review(review_input)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         output_dir = Path(args.evidence_dir or f"orca-evidence-{timestamp}")
         manifest = EvidencePacketWriter().write(
@@ -260,6 +365,7 @@ def _run_ai_review(args: argparse.Namespace, result: ScanResult) -> Optional[Pat
             prompts=prompts,
             responses=responses,
             replay_command=_build_replay_command(args),
+            delta=delta,
         )
     except (ValueError, OSError) as exc:
         error = redact_untrusted_text(str(exc), 2_000)
@@ -273,12 +379,28 @@ def _run_ai_review(args: argparse.Namespace, result: ScanResult) -> Optional[Pat
     return manifest
 
 
+def _exit_code(findings) -> int:
+    severities = [finding.severity for finding in findings]
+    if Severity.CRITICAL in severities:
+        return 3
+    if Severity.HIGH in severities:
+        return 2
+    if Severity.MEDIUM in severities:
+        return 1
+    return 0
+
+
 def main() -> None:
     if "--help" in sys.argv or "-h" in sys.argv or "--version" in sys.argv:
         from rich.console import Console
+
         print_banner(Console(), __version__)
 
     args = parse_arguments()
+
+    if args.fail_on_new and not args.baseline:
+        print("Error: --fail-on-new requires --baseline")
+        sys.exit(4)
 
     if args.discover:
         sys.exit(run_discovery(args))
@@ -310,8 +432,21 @@ def main() -> None:
 
     result = scanner.run()
 
+    delta = None
+    if args.baseline:
+        try:
+            delta = compare_to_baseline(result, Path(args.baseline))
+        except BaselineError as exc:
+            reporter.console.print(f"[red][-][/red] Baseline comparison failed: {exc}")
+            sys.exit(4)
+        reporter.console.print(
+            "[cyan][*][/cyan] Baseline delta: "
+            f"{len(delta.new)} new, {len(delta.fixed)} fixed, "
+            f"{len(delta.changed)} changed, {len(delta.unchanged)} unchanged"
+        )
+
     if args.ai:
-        _run_ai_review(args, result)
+        _run_ai_review(args, result, delta)
 
     if args.format == "console":
         reporter.print_result(result)
@@ -333,31 +468,46 @@ def main() -> None:
             print(out)
     elif args.format == "csv":
         import csv
-        with open(args.output or "orca_report.csv", "w", newline="", encoding="utf-8") as f:
+
+        with open(
+            args.output or "orca_report.csv", "w", newline="", encoding="utf-8"
+        ) as f:
             writer = csv.writer(f)
-            writer.writerow(["check", "severity", "title", "description", "request", "response_status", "remediation"])
+            writer.writerow(
+                [
+                    "check",
+                    "severity",
+                    "title",
+                    "description",
+                    "request",
+                    "response_status",
+                    "remediation",
+                ]
+            )
             for finding in result.findings:
                 ev = finding.evidence
-                writer.writerow([
-                    finding.check_name,
-                    finding.severity.value,
-                    finding.title,
-                    finding.description,
-                    ev.request,
-                    ev.response_status,
-                    finding.remediation,
-                ])
+                writer.writerow(
+                    [
+                        finding.check_name,
+                        finding.severity.value,
+                        finding.title,
+                        finding.description,
+                        ev.request,
+                        ev.response_status,
+                        finding.remediation,
+                    ]
+                )
         print(f"[+] CSV report saved to {args.output or 'orca_report.csv'}")
 
-    # Exit code based on highest severity
-    severities = [f.severity for f in result.findings]
-    if Severity.CRITICAL in severities:
-        sys.exit(3)
-    elif Severity.HIGH in severities:
-        sys.exit(2)
-    elif Severity.MEDIUM in severities:
-        sys.exit(1)
-    sys.exit(0)
+    if args.fail_on_new:
+        assert delta is not None
+        blocking = delta.blocking_fingerprints(Severity(args.fail_on_new))
+        findings = [
+            finding for finding in result.findings if finding.fingerprint in blocking
+        ]
+        code = _exit_code(findings)
+        sys.exit(code or (1 if findings else 0))
+    sys.exit(_exit_code(result.findings))
 
 
 if __name__ == "__main__":
