@@ -12,6 +12,7 @@ from rich.console import Console
 from orca.checks.base import BaseCheck
 from orca.checks import ALL_CHECKS
 from orca.findings import ScanResult, Severity, TargetMeta
+from orca.methodology import build_methodology_artifact
 from orca.target import Target
 
 
@@ -43,6 +44,11 @@ class Scanner:
             scan_config={
                 "threads": threads,
                 "min_severity": min_severity.value if min_severity else None,
+            },
+            artifacts={
+                "methodology": build_methodology_artifact(
+                    check.name for check in self.checks
+                )
             },
         )
 

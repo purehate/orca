@@ -112,6 +112,14 @@ This is outside-in evidence, not proof that an OWASP category is vulnerability
 free. Source-aware authorization, data-flow, dependency, logging, and business
 logic review belongs in the companion internal code-review workflow.
 
+Every scan serializes an `artifacts.methodology` coverage matrix for all OWASP
+Top 10:2025 categories. Each category is labeled `focused`, `partial`,
+`not_externally_verifiable`, or `not_run`, with the checks actually executed.
+The matrix also records the Odoo security-reporting constraints used for bounded
+automation, evidence, and human-reviewed AI. This gives reviewers a precise
+handoff between ORCA's outside-in evidence and the internal harness rather than
+an unsupported claim of complete vulnerability coverage.
+
 ### AI-Assisted Evidence Review
 
 ORCA can send its deterministic findings to a local or private model for advisory
