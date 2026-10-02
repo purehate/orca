@@ -41,6 +41,7 @@ Thumbs.db
 *.html
 *.json
 report.*
+orca_report.*
 /tmp/
 
 # Scan results hold target data; keep them out of git
