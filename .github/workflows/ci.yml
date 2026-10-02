@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install ruff
-      - run: ruff check orca/
+      - run: ruff check orca/ tests/
 
   test:
     runs-on: ubuntu-latest
@@ -27,7 +27,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e .
+      - run: pip install -e ".[dev]"
       - run: python -m py_compile orca/*.py orca/**/*.py
       - run: orca --version
       - run: orca --help
+      - run: python -m pytest --cov=orca --cov-report=term-missing

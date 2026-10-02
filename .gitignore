@@ -43,6 +43,11 @@ Thumbs.db
 report.*
 /tmp/
 
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+
 # Odoo old code
 odoomap/
 odoomap.py
