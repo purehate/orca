@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORCA_CLAUDE_DIR="${CLAUDE_HOME:-$HOME/.claude}"
 ORCA_AGENTS_DIR="${AGENTS_HOME:-$HOME/.agents}"
@@ -74,7 +79,36 @@ install_file "$ROOT/prompts/orca-security-scan.md" "$ORCA_PI_AGENT_DIR/prompts/o
 install_dir "$ROOT/skills/orca-security-scan" "$ORCA_AGENTS_DIR/skills/orca-security-scan"
 install_dir "$ROOT/skills/orca-security-scan" "$ORCA_CLAUDE_DIR/skills/orca-security-scan"
 
-echo "ORCA agent integration installed."
+echo ""
+echo -e "${GREEN}✓ Installation complete!${NC}"
+echo ""
+echo "Agent integration:"
 echo "  Claude Code: /orca-security-scan"
 echo "  Pi:          /orca-security-scan"
 echo '  Codex:       $orca-security-scan'
+echo ""
+echo "Installed to:"
+echo "  Shared skill:   $ORCA_AGENTS_DIR/skills/orca-security-scan"
+echo "  Claude skill:   $ORCA_CLAUDE_DIR/skills/orca-security-scan"
+echo "  Claude command: $ORCA_CLAUDE_DIR/commands/orca-security-scan.md"
+echo "  Pi prompt:      $ORCA_PI_AGENT_DIR/prompts/orca-security-scan.md"
+echo ""
+echo "Available commands:"
+echo "  orca - Unauthenticated Odoo frontend security scanner"
+echo ""
+
+if command -v orca >/dev/null 2>&1; then
+  echo -e "${GREEN}✓ Commands are available in PATH${NC}"
+elif [[ "$ASSETS_ONLY" == true ]]; then
+  echo -e "${YELLOW}⚠ orca is not in PATH. Run ./install.sh without --assets-only to install it.${NC}"
+else
+  echo -e "${YELLOW}⚠ Commands not in PATH. Add this to your shell profile:${NC}"
+  echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+fi
+
+echo ""
+echo "Quick start:"
+echo "  orca -u https://odoo.example.com"
+echo ""
+echo "Or from Claude Code:"
+echo "  /orca-security-scan https://odoo.example.com"
