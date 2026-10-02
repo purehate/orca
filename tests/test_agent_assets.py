@@ -98,7 +98,12 @@ def test_installer_prints_plain_text_when_piped(tmp_path: Path) -> None:
 
 
 def _run_installer_with_fake_tools(
-    tmp_path: Path, externally_managed: bool, tools: tuple[str, ...], pip_exit: int = 0
+    tmp_path: Path,
+    externally_managed: bool,
+    tools: tuple[str, ...],
+    pip_exit: int = 0,
+    python_version: str = "3.12",
+    failing_tools: tuple[str, ...] = (),
 ) -> tuple[subprocess.CompletedProcess, list[str]]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -107,18 +112,26 @@ def _run_installer_with_fake_tools(
 
     calls = tmp_path / "calls.log"
     probe_exit = 0 if externally_managed else 1
-    # Each fake answers its bin-dir query; only install commands are logged.
+    # Each fake answers its bin-dir query without logging it.
     queries = {
         "python3": "- orca",
         "uv": "tool dir --bin",
         "pipx": "environment --value PIPX_BIN_DIR",
     }
+    # The PEP 668 probe (python3 -) and the version check (python3 -c) are not logged.
+    python_prelude = (
+        f'[ "$1" = "-" ] && exit {probe_exit}\n'
+        f'[ "$1" = "-c" ] && echo {python_version} && exit 0\n'
+    )
     fakes = {
-        "python3": (f'[ "$1" = "-" ] && exit {probe_exit}\n', pip_exit),
+        "python3": (python_prelude, pip_exit),
         **{tool: ("", 0) for tool in tools},
+        **{tool: ("", 1) for tool in failing_tools},
     }
     for name, (prelude, exit_code) in fakes.items():
-        answer = f'[ "$*" = "{queries[name]}" ] && echo /{name}/bin && exit 0\n'
+        answer = ""
+        if name in queries:
+            answer = f'[ "$*" = "{queries[name]}" ] && echo /{name}/bin && exit 0\n'
         fake = bin_dir / name
         fake.write_text(
             f'#!/bin/sh\n{answer}{prelude}echo "{name} $*" >> "{calls}"\nexit {exit_code}\n',
@@ -147,11 +160,11 @@ def _run_installer_with_fake_tools(
 @pytest.mark.parametrize(
     ("externally_managed", "tools", "expected_call"),
     [
-        (False, ("uv", "pipx"), "python3 -m pip install -e {root}"),
-        (True, ("uv", "pipx"), "uv tool install --editable {root}"),
+        (False, ("uv", "pipx"), "python3 -m pip install --quiet -e {root}"),
+        (True, ("uv", "pipx"), "uv tool install --quiet --editable {root}"),
         (True, ("pipx",), "pipx install --force --editable {root}"),
         # pip still installs when the user opted out of PEP 668.
-        (True, (), "python3 -m pip install -e {root}"),
+        (True, (), "python3 -m pip install --quiet -e {root}"),
     ],
     ids=["pip", "uv", "pipx", "pip-opt-out"],
 )
@@ -188,5 +201,43 @@ def test_installer_explains_managed_python_without_uv_or_pipx(tmp_path: Path) ->
     result, calls = _run_installer_with_fake_tools(tmp_path, True, (), pip_exit=1)
 
     assert result.returncode == 1
+    assert "pip install failed" in result.stdout
     assert "install uv or pipx" in result.stderr
-    assert calls == [f"python3 -m pip install -e {Path.cwd()}"]
+    assert calls == [f"python3 -m pip install --quiet -e {Path.cwd()}"]
+
+
+def test_installer_rejects_python_older_than_3_9(tmp_path: Path) -> None:
+    result, calls = _run_installer_with_fake_tools(
+        tmp_path, False, (), python_version="3.8"
+    )
+
+    assert result.returncode == 1
+    assert "Python 3.9+ is required. Found 3.8" in result.stdout
+    assert calls == []
+    assert not (tmp_path / "agents").exists()
+
+
+def test_installer_stops_when_uv_install_fails(tmp_path: Path) -> None:
+    result, calls = _run_installer_with_fake_tools(
+        tmp_path, True, (), failing_tools=("uv",)
+    )
+
+    assert result.returncode == 1
+    assert "uv tool install failed" in result.stdout
+    assert calls == [f"uv tool install --quiet --editable {Path.cwd()}"]
+    assert not (tmp_path / "agents").exists()
+
+
+def test_installer_stops_when_installed_orca_does_not_start(tmp_path: Path) -> None:
+    """Fail at install time, not mid-scan, when the orca on PATH cannot start."""
+    result, calls = _run_installer_with_fake_tools(
+        tmp_path, False, (), failing_tools=("orca",)
+    )
+
+    assert result.returncode == 1
+    assert "failed to start" in result.stdout
+    assert calls == [
+        f"python3 -m pip install --quiet -e {Path.cwd()}",
+        "orca --version",
+    ]
+    assert not (tmp_path / "agents").exists()
