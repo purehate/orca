@@ -110,6 +110,8 @@ class EvidencePacketWriter:
             f"- Target: `{redact_untrusted_text(result.target.url, 1_000)}`",
             f"- Scan window: `{result.started_at}` to `{result.completed_at}`",
             f"- Deterministic findings: **{len(result.findings)}**",
+            f"- Findings reviewed by the model: **{len(review.reviews)}**",
+            f"- Findings not reviewed (cap): **{review.skipped_findings}**",
             f"- AI review status: **{review.status}**",
             f"- Advisory model: `{review.provider}/{review.model}`",
             "",

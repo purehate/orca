@@ -128,7 +128,18 @@ behavior checks. Return only one JSON object matching this schema:
 """
 
 
+_FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
 def _extract_json(raw: str) -> Dict[str, Any]:
+    """Extract the first JSON object, preferring a fenced code block if present."""
+    for match in _FENCED_JSON_RE.finditer(raw):
+        try:
+            value, _ = json.JSONDecoder().raw_decode(match.group(1))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
     start = raw.find("{")
     if start < 0:
         raise AIResponseError("Model response did not contain a JSON object")
@@ -258,6 +269,7 @@ class AIAnalyzer:
             result.findings,
             key=lambda finding: (-severity_rank[finding.severity], finding.fingerprint),
         )[: self.max_findings]
+        report.skipped_findings = max(0, len(result.findings) - len(findings))
         for finding in findings:
             finding_id = f"ORCA-{finding.fingerprint[:12].upper()}"
             prompt = build_prompt(finding)

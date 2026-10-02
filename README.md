@@ -181,8 +181,9 @@ The evidence directory contains:
 
 The default cap is 25 findings, highest severity first. Use
 `--ai-max-findings`, `--ai-timeout`, `--ai-model`, and `--ai-endpoint` to tune
-the lane. A model outage or malformed response is recorded as `partial` or
-`failed`; the original findings remain intact.
+the lane. Findings above the cap are not sent to the model and are counted in
+`ai-review.json` as `skipped_findings`. A model outage or malformed response is
+recorded as `partial` or `failed`; the original findings remain intact.
 
 For recurring assessments, compare against the prior packet and gate only newly
 introduced or severity-increased findings:

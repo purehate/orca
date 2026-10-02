@@ -67,6 +67,7 @@ class AIReviewReport:
     status: str = "running"
     reviews: List[FindingReview] = field(default_factory=list)
     errors: List[Dict[str, str]] = field(default_factory=list)
+    skipped_findings: int = 0
 
     def finish(self) -> None:
         self.completed_at = datetime.now(timezone.utc).isoformat()
@@ -87,4 +88,5 @@ class AIReviewReport:
             "status": self.status,
             "reviews": [review.to_dict() for review in self.reviews],
             "errors": list(self.errors),
+            "skipped_findings": self.skipped_findings,
         }
