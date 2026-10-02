@@ -101,14 +101,21 @@ def _run_installer_with_fake_tools(
 
     calls = tmp_path / "calls.log"
     probe_exit = 0 if externally_managed else 1
+    # Each fake answers its bin-dir query; only install commands are logged.
+    queries = {
+        "python3": "- orca",
+        "uv": "tool dir --bin",
+        "pipx": "environment --value PIPX_BIN_DIR",
+    }
     fakes = {
         "python3": (f'[ "$1" = "-" ] && exit {probe_exit}\n', pip_exit),
         **{tool: ("", 0) for tool in tools},
     }
     for name, (prelude, exit_code) in fakes.items():
+        answer = f'[ "$*" = "{queries[name]}" ] && echo /{name}/bin && exit 0\n'
         fake = bin_dir / name
         fake.write_text(
-            f'#!/bin/sh\n{prelude}echo "{name} $*" >> "{calls}"\nexit {exit_code}\n',
+            f'#!/bin/sh\n{answer}{prelude}echo "{name} $*" >> "{calls}"\nexit {exit_code}\n',
             encoding="utf-8",
         )
         fake.chmod(0o755)
@@ -150,6 +157,25 @@ def test_installer_picks_cli_install_method(
     assert result.returncode == 0, result.stderr
     assert calls == [expected_call.format(root=Path.cwd())]
     assert (tmp_path / "agents/skills/orca-security-scan/SKILL.md").is_file()
+
+
+@pytest.mark.parametrize(
+    ("externally_managed", "tools", "bin_dir"),
+    [
+        (False, ("uv", "pipx"), "/python3/bin"),
+        (True, ("uv", "pipx"), "/uv/bin"),
+        (True, ("pipx",), "/pipx/bin"),
+        (True, (), "/python3/bin"),
+    ],
+    ids=["pip", "uv", "pipx", "pip-opt-out"],
+)
+def test_installer_path_hint_names_the_installer_bin_dir(
+    tmp_path: Path, externally_managed: bool, tools: tuple[str, ...], bin_dir: str
+) -> None:
+    result, _ = _run_installer_with_fake_tools(tmp_path, externally_managed, tools)
+
+    assert result.returncode == 0, result.stderr
+    assert f'export PATH="{bin_dir}:$PATH"' in result.stdout
 
 
 def test_installer_explains_managed_python_without_uv_or_pipx(tmp_path: Path) -> None:

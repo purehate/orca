@@ -66,17 +66,46 @@ PY
 }
 
 install_cli() {
+  CLI_INSTALLER=pip
   if ! python_is_externally_managed; then
     python3 -m pip install -e "$ROOT"
   elif command -v uv >/dev/null 2>&1; then
+    CLI_INSTALLER=uv
     uv tool install --editable "$ROOT"
   elif command -v pipx >/dev/null 2>&1; then
+    CLI_INSTALLER=pipx
     pipx install --force --editable "$ROOT"
   # pip still succeeds when the user opted out of PEP 668 (break-system-packages).
   elif ! python3 -m pip install -e "$ROOT"; then
     echo "hint: install uv or pipx, or activate a virtualenv, then re-run ./install.sh." >&2
     exit 1
   fi
+}
+
+# Ask the tool that installed orca where it put the command.
+cli_bin_dir() {
+  case "$CLI_INSTALLER" in
+    uv) uv tool dir --bin ;;
+    pipx) pipx environment --value PIPX_BIN_DIR ;;
+    # pip may fall back to a per-user install, so read the script path from its record.
+    pip)
+      python3 - orca <<'PY'
+import os
+import sys
+from importlib.metadata import PackageNotFoundError, distribution
+
+name = sys.argv[1]
+try:
+    files = distribution(name).files or []
+except PackageNotFoundError:
+    files = []
+for file in files:
+    if file.name == name and file.parent.name == "bin":
+        print(os.path.dirname(os.path.normpath(file.locate())))
+        break
+PY
+      ;;
+  esac
 }
 
 if [[ "$ASSETS_ONLY" == false ]]; then
@@ -119,9 +148,11 @@ if command -v orca >/dev/null 2>&1; then
   echo -e "${GREEN}✓ Commands are available in PATH${NC}"
 elif [[ "$ASSETS_ONLY" == true ]]; then
   echo -e "${YELLOW}⚠ orca is not in PATH. Run ./install.sh without --assets-only to install it.${NC}"
-else
+elif bin_dir="$(cli_bin_dir 2>/dev/null)" && [[ -n "$bin_dir" ]]; then
   echo -e "${YELLOW}⚠ Commands not in PATH. Add this to your shell profile:${NC}"
-  echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo "  export PATH=\"$bin_dir:\$PATH\""
+else
+  echo -e "${YELLOW}⚠ Commands not in PATH. Add the bin directory named in the $CLI_INSTALLER output above to PATH.${NC}"
 fi
 
 echo ""
