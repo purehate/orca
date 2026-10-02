@@ -60,6 +60,26 @@ def test_page_check_reports_controls_without_persisting_field_values() -> None:
     assert "person@example.test" not in serialized
 
 
+def test_page_check_recognizes_standard_odoo_website_form_csrf_handling() -> None:
+    target = FakeTarget(
+        {
+            "/contact": _response(
+                """
+                <form method="post" action="/website/form/"
+                      class="s_website_form o_mark_required">
+                  <input name="email_from">
+                </form>
+                """
+            )
+        }
+    )
+    result = ScanResult(scan_config={"include_paths": ["/contact"]})
+
+    PageCheck(target, result).run()
+
+    assert not any("CSRF" in finding.title for finding in result.findings)
+
+
 def test_crawler_maps_same_origin_pages_forms_and_script_endpoints() -> None:
     root = _response(
         """

@@ -100,6 +100,10 @@ class PageCheck(BaseCheck):
         for index, form in enumerate(forms, start=1):
             if (form.get("method") or "GET").upper() != "POST":
                 continue
+            action_path = urlparse(form.get("action") or path).path
+            classes = set(form.get("class") or [])
+            if action_path == "/website/form/" and "s_website_form" in classes:
+                continue
             names = {
                 field.get("name", "").lower()
                 for field in form.find_all(["input", "textarea", "select"])
@@ -116,6 +120,9 @@ class PageCheck(BaseCheck):
                 response_snippet="; ".join(missing),
                 remediation="Use Odoo CSRF protection for every state-changing form and retain a regression test that rejects tokenless submissions.",
                 cwe="CWE-352",
+                references=[
+                    "https://www.odoo.com/documentation/19.0/developer/reference/backend/http.html#csrf"
+                ],
             )
 
     def _check_form_actions(self, path: str, forms: List) -> None:
