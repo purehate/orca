@@ -10,7 +10,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORCA_CLAUDE_DIR="${CLAUDE_HOME:-$HOME/.claude}"
 ORCA_AGENTS_DIR="${AGENTS_HOME:-$HOME/.agents}"
 ORCA_PI_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+# Backups go outside the agent dirs, where a copied SKILL.md would load as a duplicate skill.
+ORCA_BACKUP_DIR="$HOME/.orca/install-backups/$(date +%Y%m%d%H%M%S)"
 ASSETS_ONLY=false
+BACKED_UP=false
 
 if [[ "${1:-}" == "--assets-only" ]]; then
   ASSETS_ONLY=true
@@ -19,11 +22,20 @@ elif [[ $# -gt 0 ]]; then
   exit 2
 fi
 
+back_up() {
+  local dst="$1"
+  local rel="${dst#"$HOME"/}"
+  local copy="$ORCA_BACKUP_DIR/${rel#/}"
+  mkdir -p "$(dirname "$copy")"
+  cp -R "$dst" "$copy"
+  BACKED_UP=true
+}
+
 install_file() {
   local src="$1"
   local dst="$2"
   if [[ -e "$dst" || -L "$dst" ]]; then
-    cp -R "$dst" "$dst.bak.$(date +%Y%m%d%H%M%S)"
+    back_up "$dst"
   fi
   cp "$src" "$dst"
 }
@@ -32,7 +44,7 @@ install_dir() {
   local src="$1"
   local dst="$2"
   if [[ -e "$dst" || -L "$dst" ]]; then
-    cp -R "$dst" "$dst.bak.$(date +%Y%m%d%H%M%S)"
+    back_up "$dst"
     rm -rf "$dst"
   fi
   cp -R "$src" "$dst"
@@ -92,6 +104,9 @@ echo "  Shared skill:   $ORCA_AGENTS_DIR/skills/orca-security-scan"
 echo "  Claude skill:   $ORCA_CLAUDE_DIR/skills/orca-security-scan"
 echo "  Claude command: $ORCA_CLAUDE_DIR/commands/orca-security-scan.md"
 echo "  Pi prompt:      $ORCA_PI_AGENT_DIR/prompts/orca-security-scan.md"
+if [[ "$BACKED_UP" == true ]]; then
+  echo "  Backups:        $ORCA_BACKUP_DIR"
+fi
 echo ""
 echo "Available commands:"
 echo "  orca - Unauthenticated Odoo frontend security scanner"

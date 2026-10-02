@@ -44,6 +44,47 @@ def test_assets_only_installer_wires_claude_codex_and_pi(tmp_path: Path) -> None
     assert (tmp_path / "pi/prompts/orca-security-scan.md").is_file()
 
 
+def _run_assets_only_installer(tmp_path: Path) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    env.update(
+        {
+            "HOME": str(tmp_path),
+            "CLAUDE_HOME": str(tmp_path / "claude"),
+            "AGENTS_HOME": str(tmp_path / "agents"),
+            "PI_CODING_AGENT_DIR": str(tmp_path / "pi"),
+        }
+    )
+    result = subprocess.run(
+        ["bash", "install.sh", "--assets-only"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return result
+
+
+def test_installer_keeps_backups_out_of_agent_dirs(tmp_path: Path) -> None:
+    installed = {
+        "agents/skills": "orca-security-scan",
+        "claude/skills": "orca-security-scan",
+        "claude/commands": "orca-security-scan.md",
+        "pi/prompts": "orca-security-scan.md",
+    }
+    _run_assets_only_installer(tmp_path)
+    result = _run_assets_only_installer(tmp_path)
+
+    for folder, name in installed.items():
+        # A backup copy in a skills dir would load as a second orca-security-scan skill.
+        assert os.listdir(tmp_path / folder) == [name]
+    (backup_dir,) = (tmp_path / ".orca/install-backups").iterdir()
+    assert str(backup_dir) in result.stdout
+    for folder, name in installed.items():
+        assert (backup_dir / folder / name).exists()
+
+
 def _run_installer_with_fake_tools(
     tmp_path: Path, externally_managed: bool, tools: tuple[str, ...], pip_exit: int = 0
 ) -> tuple[subprocess.CompletedProcess, list[str]]:
