@@ -33,8 +33,34 @@ install_dir() {
   cp -R "$src" "$dst"
 }
 
+# Same check pip uses to refuse installs (PEP 668); virtualenvs are exempt.
+python_is_externally_managed() {
+  python3 - <<'PY'
+import os
+import sys
+import sysconfig
+
+marker = os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")
+sys.exit(0 if sys.prefix == sys.base_prefix and os.path.isfile(marker) else 1)
+PY
+}
+
+install_cli() {
+  if ! python_is_externally_managed; then
+    python3 -m pip install -e "$ROOT"
+  elif command -v uv >/dev/null 2>&1; then
+    uv tool install --editable "$ROOT"
+  elif command -v pipx >/dev/null 2>&1; then
+    pipx install --force --editable "$ROOT"
+  # pip still succeeds when the user opted out of PEP 668 (break-system-packages).
+  elif ! python3 -m pip install -e "$ROOT"; then
+    echo "hint: install uv or pipx, or activate a virtualenv, then re-run ./install.sh." >&2
+    exit 1
+  fi
+}
+
 if [[ "$ASSETS_ONLY" == false ]]; then
-  python3 -m pip install -e "$ROOT"
+  install_cli
 fi
 
 mkdir -p \
