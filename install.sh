@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Colors for output
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Colors for output, only on a terminal so piped or logged output stays plain
+GREEN='' YELLOW='' NC=''
+if [[ -t 1 ]]; then
+  GREEN='\033[0;32m'
+  YELLOW='\033[1;33m'
+  NC='\033[0m' # No Color
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORCA_CLAUDE_DIR="${CLAUDE_HOME:-$HOME/.claude}"

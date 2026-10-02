@@ -85,6 +85,12 @@ def test_installer_keeps_backups_out_of_agent_dirs(tmp_path: Path) -> None:
         assert (backup_dir / folder / name).exists()
 
 
+def test_installer_prints_plain_text_when_piped(tmp_path: Path) -> None:
+    result = _run_assets_only_installer(tmp_path)
+
+    assert "\x1b[" not in result.stdout
+
+
 def _run_installer_with_fake_tools(
     tmp_path: Path, externally_managed: bool, tools: tuple[str, ...], pip_exit: int = 0
 ) -> tuple[subprocess.CompletedProcess, list[str]]:
