@@ -264,8 +264,22 @@ class AIAnalyzer:
             prompts[finding_id] = prompt
             try:
                 raw = self.client.generate(prompt)
+                try:
+                    review = parse_review(finding, prompt, raw)
+                except AIResponseError as exc:
+                    responses[f"{finding_id}-attempt1"] = raw
+                    retry_prompt = (
+                        f"{prompt}\n\n"
+                        "Your previous JSON response failed validation. Correct it once "
+                        "without adding prose or changing the evidence. "
+                        f"Validation error: {redact_untrusted_text(str(exc), 500)}\n"
+                        "Previous response:\n"
+                        f"{redact_untrusted_text(raw, MAX_EVIDENCE_CHARS)}"
+                    )
+                    prompts[f"{finding_id}-retry"] = retry_prompt
+                    raw = self.client.generate(retry_prompt)
+                    review = parse_review(finding, prompt, raw)
                 responses[finding_id] = raw
-                review = parse_review(finding, prompt, raw)
                 report.reviews.append(
                     replace(review, response_file=f"responses/{finding_id}.txt")
                 )

@@ -85,6 +85,16 @@ class FailingClient(FakeClient):
         raise AIProviderError("provider unavailable")
 
 
+class SequenceClient(FakeClient):
+    def __init__(self, responses):
+        super().__init__("")
+        self.responses = iter(responses)
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return next(self.responses)
+
+
 def test_finding_fingerprint_is_stable_and_exported() -> None:
     finding = _finding()
 
@@ -171,6 +181,22 @@ def test_analyzer_records_provider_failure_without_suppressing_finding() -> None
     assert len(prompts) == 1
     assert responses == {}
     assert len(result.findings) == 1
+
+
+def test_analyzer_retries_one_invalid_model_response() -> None:
+    invalid = json.loads(_response())
+    invalid["verdict"] = "informational"
+    client = SequenceClient([json.dumps(invalid), _response()])
+    result = ScanResult(findings=[_finding()])
+
+    report, prompts, responses = AIAnalyzer(client).review(result)
+
+    finding_id = report.reviews[0].finding_id
+    assert report.status == "complete"
+    assert len(client.prompts) == 2
+    assert f"{finding_id}-retry" in prompts
+    assert f"{finding_id}-attempt1" in responses
+    assert responses[finding_id] == _response()
 
 
 def test_analyzer_rejects_invalid_limit() -> None:
