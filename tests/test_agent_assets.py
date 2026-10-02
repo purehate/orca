@@ -5,6 +5,41 @@ from pathlib import Path
 
 import pytest
 
+# Paths below are relative to the sandboxed HOME.
+INSTALLED_FILES = (
+    Path("claude/skills/orca-security-scan/SKILL.md"),
+    Path("agents/skills/orca-security-scan/SKILL.md"),
+    Path("claude/commands/orca-security-scan.md"),
+    Path("pi/prompts/orca-security-scan.md"),
+)
+# Older installers left these beside the installed files, where agents load them as duplicates.
+LEGACY_BACKUPS = (
+    Path("claude/skills/orca-security-scan.bak.20200101000000/SKILL.md"),
+    Path("agents/skills/orca-security-scan.bak.20200101000000/SKILL.md"),
+    Path("claude/commands/orca-security-scan.md.bak.20200101000000"),
+    Path("pi/prompts/orca-security-scan.md.bak.20200101000000"),
+)
+
+
+def _run_assets_only_installer(home: Path) -> subprocess.CompletedProcess:
+    env = {key: value for key, value in os.environ.items() if key != "XDG_STATE_HOME"}
+    env.update(
+        {
+            "HOME": str(home),
+            "CLAUDE_HOME": str(home / "claude"),
+            "AGENTS_HOME": str(home / "agents"),
+            "PI_CODING_AGENT_DIR": str(home / "pi"),
+        }
+    )
+    return subprocess.run(
+        ["bash", "install.sh", "--assets-only"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=15,
+        check=False,
+    )
+
 
 def test_agent_assets_have_host_specific_argument_syntax() -> None:
     skill = Path("skills/orca-security-scan/SKILL.md").read_text(encoding="utf-8")
@@ -18,76 +53,47 @@ def test_agent_assets_have_host_specific_argument_syntax() -> None:
 
 
 def test_assets_only_installer_wires_claude_codex_and_pi(tmp_path: Path) -> None:
-    env = os.environ.copy()
-    env.update(
-        {
-            "HOME": str(tmp_path),
-            "CLAUDE_HOME": str(tmp_path / "claude"),
-            "AGENTS_HOME": str(tmp_path / "agents"),
-            "PI_CODING_AGENT_DIR": str(tmp_path / "pi"),
-        }
-    )
-
-    result = subprocess.run(
-        ["bash", "install.sh", "--assets-only"],
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=15,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert (tmp_path / "agents/skills/orca-security-scan/SKILL.md").is_file()
-    assert (tmp_path / "claude/skills/orca-security-scan/SKILL.md").is_file()
-    assert (tmp_path / "claude/commands/orca-security-scan.md").is_file()
-    assert (tmp_path / "pi/prompts/orca-security-scan.md").is_file()
-
-
-def _run_assets_only_installer(tmp_path: Path) -> subprocess.CompletedProcess:
-    env = os.environ.copy()
-    env.update(
-        {
-            "HOME": str(tmp_path),
-            "CLAUDE_HOME": str(tmp_path / "claude"),
-            "AGENTS_HOME": str(tmp_path / "agents"),
-            "PI_CODING_AGENT_DIR": str(tmp_path / "pi"),
-        }
-    )
-    result = subprocess.run(
-        ["bash", "install.sh", "--assets-only"],
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=15,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    return result
-
-
-def test_installer_keeps_backups_out_of_agent_dirs(tmp_path: Path) -> None:
-    installed = {
-        "agents/skills": "orca-security-scan",
-        "claude/skills": "orca-security-scan",
-        "claude/commands": "orca-security-scan.md",
-        "pi/prompts": "orca-security-scan.md",
-    }
-    _run_assets_only_installer(tmp_path)
     result = _run_assets_only_installer(tmp_path)
 
-    for folder, name in installed.items():
-        # A backup copy in a skills dir would load as a second orca-security-scan skill.
-        assert os.listdir(tmp_path / folder) == [name]
-    (backup_dir,) = (tmp_path / ".orca/install-backups").iterdir()
-    assert str(backup_dir) in result.stdout
-    for folder, name in installed.items():
-        assert (backup_dir / folder / name).exists()
+    assert result.returncode == 0, result.stderr
+    for installed in INSTALLED_FILES:
+        assert (tmp_path / installed).is_file(), installed
+
+
+def test_reinstall_keeps_backups_out_of_agent_directories(tmp_path: Path) -> None:
+    """A backup beside an installed skill loads as a duplicate skill."""
+    for legacy in LEGACY_BACKUPS:
+        (tmp_path / legacy).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / legacy).write_text("legacy backup\n", encoding="utf-8")
+
+    # The second run replaces an existing install, which is what writes backups.
+    first = _run_assets_only_installer(tmp_path)
+    second = _run_assets_only_installer(tmp_path)
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert "Moved 4 old backup(s)" in first.stdout
+    for installed in INSTALLED_FILES:
+        agent_dir = tmp_path / installed.parts[0] / installed.parts[1]
+        # Anything else in an agent directory would load as a second orca-security-scan skill.
+        assert os.listdir(agent_dir) == [installed.parts[2]], agent_dir
+
+    backups = tmp_path / ".local/state/orca/backups"
+    for legacy in LEGACY_BACKUPS:
+        moved = backups / "legacy" / legacy
+        assert moved.read_text(encoding="utf-8") == "legacy backup\n", legacy
+
+    assert str(backups) in second.stdout
+    reinstall_backups = [path for path in backups.iterdir() if path.name != "legacy"]
+    assert len(reinstall_backups) == 1, reinstall_backups
+    for installed in INSTALLED_FILES:
+        assert (reinstall_backups[0] / installed).is_file(), installed
 
 
 def test_installer_prints_plain_text_when_piped(tmp_path: Path) -> None:
     result = _run_assets_only_installer(tmp_path)
 
+    assert result.returncode == 0, result.stderr
     assert "\x1b[" not in result.stdout
 
 

@@ -161,6 +161,13 @@ second model endpoint, install the portable agent integration:
 ./install.sh
 ```
 
+When the installer replaces an existing install, it backs up the old files to
+`~/.local/state/orca/backups/<timestamp>-<pid>/` (respects `XDG_STATE_HOME`).
+It never puts backups beside the installed copy, because Claude Code and Codex
+would load an old skill copy there as a duplicate skill. It moves `*.bak.*`
+backups that older installers left in the agent directories to
+`backups/legacy/`.
+
 Then invoke `/orca-security-scan` in Claude Code or Pi, or
 `$orca-security-scan` in Codex. The shared skill lives under
 `~/.agents/skills/orca-security-scan`; thin Claude and Pi adapters provide their

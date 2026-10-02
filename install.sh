@@ -13,10 +13,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORCA_CLAUDE_DIR="${CLAUDE_HOME:-$HOME/.claude}"
 ORCA_AGENTS_DIR="${AGENTS_HOME:-$HOME/.agents}"
 ORCA_PI_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
-# Backups go outside the agent dirs, where a copied SKILL.md would load as a duplicate skill.
-ORCA_BACKUP_DIR="$HOME/.orca/install-backups/$(date +%Y%m%d%H%M%S)"
+# Backups live outside the agent directories: a copy left beside a skill loads as a duplicate skill.
+BACKUP_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/orca/backups"
+BACKUP_DIR="$BACKUP_ROOT/$(date +%Y%m%d%H%M%S)-$$"
+MOVED_BACKUPS=0
 ASSETS_ONLY=false
-BACKED_UP=false
 
 if [[ "${1:-}" == "--assets-only" ]]; then
   ASSETS_ONLY=true
@@ -25,20 +26,44 @@ elif [[ $# -gt 0 ]]; then
   exit 2
 fi
 
-back_up() {
+# Mirror an installed path under a backup root, relative to HOME when it lives there.
+backup_path() {
+  local root="$1"
+  local rel="${2#"$HOME"/}"
+  printf '%s/%s\n' "$root" "${rel#/}"
+}
+
+backup() {
   local dst="$1"
-  local rel="${dst#"$HOME"/}"
-  local copy="$ORCA_BACKUP_DIR/${rel#/}"
-  mkdir -p "$(dirname "$copy")"
-  cp -R "$dst" "$copy"
-  BACKED_UP=true
+  local bak
+  bak="$(backup_path "$BACKUP_DIR" "$dst")"
+  mkdir -p "$(dirname "$bak")"
+  cp -R "$dst" "$bak"
+}
+
+# Older installers wrote "$dst.bak.<timestamp>" beside the installed file; move those out too.
+migrate_legacy_backups() {
+  local dst="$1"
+  local legacy target
+  for legacy in "$dst".bak.*; do
+    [[ -e "$legacy" || -L "$legacy" ]] || continue
+    target="$(backup_path "$BACKUP_ROOT/legacy" "$legacy")"
+    if [[ -e "$target" || -L "$target" ]]; then
+      echo -e "${YELLOW}WARNING: left $legacy in place because $target already exists.${NC}"
+      continue
+    fi
+    mkdir -p "$(dirname "$target")"
+    mv "$legacy" "$target"
+    MOVED_BACKUPS=$((MOVED_BACKUPS + 1))
+  done
 }
 
 install_file() {
   local src="$1"
   local dst="$2"
+  migrate_legacy_backups "$dst"
   if [[ -e "$dst" || -L "$dst" ]]; then
-    back_up "$dst"
+    backup "$dst"
   fi
   cp "$src" "$dst"
 }
@@ -46,8 +71,9 @@ install_file() {
 install_dir() {
   local src="$1"
   local dst="$2"
+  migrate_legacy_backups "$dst"
   if [[ -e "$dst" || -L "$dst" ]]; then
-    back_up "$dst"
+    backup "$dst"
     rm -rf "$dst"
   fi
   cp -R "$src" "$dst"
@@ -122,6 +148,9 @@ install_file "$ROOT/commands/orca-security-scan.md" "$ORCA_CLAUDE_DIR/commands/o
 install_file "$ROOT/prompts/orca-security-scan.md" "$ORCA_PI_AGENT_DIR/prompts/orca-security-scan.md"
 install_dir "$ROOT/skills/orca-security-scan" "$ORCA_AGENTS_DIR/skills/orca-security-scan"
 install_dir "$ROOT/skills/orca-security-scan" "$ORCA_CLAUDE_DIR/skills/orca-security-scan"
+if [[ $MOVED_BACKUPS -gt 0 ]]; then
+  echo "Moved $MOVED_BACKUPS old backup(s) out of the agent directories into $BACKUP_ROOT/legacy"
+fi
 
 echo ""
 echo -e "${GREEN}✓ Installation complete!${NC}"
@@ -136,9 +165,7 @@ echo "  Shared skill:   $ORCA_AGENTS_DIR/skills/orca-security-scan"
 echo "  Claude skill:   $ORCA_CLAUDE_DIR/skills/orca-security-scan"
 echo "  Claude command: $ORCA_CLAUDE_DIR/commands/orca-security-scan.md"
 echo "  Pi prompt:      $ORCA_PI_AGENT_DIR/prompts/orca-security-scan.md"
-if [[ "$BACKED_UP" == true ]]; then
-  echo "  Backups:        $ORCA_BACKUP_DIR"
-fi
+echo "  Backups:        $BACKUP_ROOT"
 echo ""
 echo "Available commands:"
 echo "  orca - Unauthenticated Odoo frontend security scanner"
