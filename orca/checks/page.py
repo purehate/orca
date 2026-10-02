@@ -108,7 +108,7 @@ class PageCheck(BaseCheck):
                 missing.append(f"form {index} action={form.get('action') or path}")
         if missing:
             self.add_finding(
-                title=f"POST form lacks an explicit CSRF token: {path}",
+                title=f"POST form has no explicit CSRF field on {path}",
                 description="One or more POST forms do not contain a recognizable CSRF token field. Runtime validation is required because JavaScript may add a token before submission.",
                 severity=Severity.MEDIUM,
                 request=f"GET {path}",

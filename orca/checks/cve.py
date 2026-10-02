@@ -26,8 +26,72 @@ def _query_nvd(keyword: str, timeout: int = 12) -> List[Dict[str, Any]]:
         resp.raise_for_status()
         data = resp.json()
         return data.get("vulnerabilities", [])
-    except Exception:
+    except (requests.RequestException, ValueError, TypeError):
         return []
+
+
+def _version_tuple(value: str) -> Optional[tuple]:
+    match = re.match(r"^(\d+)(?:\.(\d+))?", value)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2) or 0)
+
+
+def _iter_cpe_matches(value: Any):
+    if isinstance(value, dict):
+        matches = value.get("cpeMatch", [])
+        if isinstance(matches, list):
+            yield from matches
+        for key in ("configurations", "nodes", "children"):
+            children = value.get(key, [])
+            if isinstance(children, list):
+                for child in children:
+                    yield from _iter_cpe_matches(child)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_cpe_matches(item)
+
+
+def _version_matches_cpe(version: str, match: Dict[str, Any]) -> bool:
+    detected = _version_tuple(version)
+    criteria = str(match.get("criteria", ""))
+    parts = criteria.split(":")
+    if detected is None or len(parts) < 6:
+        return False
+
+    exact = parts[5]
+    if exact not in ("*", "-"):
+        return detected == _version_tuple(exact)
+
+    bounds = (
+        ("versionStartIncluding", lambda current, bound: current >= bound),
+        ("versionStartExcluding", lambda current, bound: current > bound),
+        ("versionEndIncluding", lambda current, bound: current <= bound),
+        ("versionEndExcluding", lambda current, bound: current < bound),
+    )
+    for key, comparator in bounds:
+        raw_bound = match.get(key)
+        if raw_bound:
+            bound = _version_tuple(str(raw_bound))
+            if bound is None or not comparator(detected, bound):
+                return False
+    return True
+
+
+def _odoo_version_applicability(
+    cve: Dict[str, Any], detected_version: Optional[str]
+) -> Optional[bool]:
+    """Return whether NVD CPE data confirms applicability to this Odoo major."""
+    if not detected_version:
+        return None
+    matches = []
+    for match in _iter_cpe_matches(cve.get("configurations", [])):
+        criteria = str(match.get("criteria", "")).lower()
+        if match.get("vulnerable") and ":a:odoo:odoo:" in criteria:
+            matches.append(match)
+    if not matches:
+        return None
+    return any(_version_matches_cpe(detected_version, match) for match in matches)
 
 
 def _extract_score(cve: Dict[str, Any]) -> Optional[float]:
@@ -77,8 +141,8 @@ class CVECheck(BaseCheck):
                 resp = self.target.get("/web/login", timeout=8)
                 if resp.status_code == 200:
                     version = detect_odoo_version(resp.text)
-            except Exception:
-                pass
+            except requests.RequestException:
+                version = None
 
         normalized = _normalize_version(version)
         modules = list(self.result.target.detected_modules)[:5]
@@ -111,8 +175,7 @@ class CVECheck(BaseCheck):
             )
             return
 
-        # Parse version from description to filter out irrelevant CVEs
-        detected_ver = _normalize_version(version)
+        candidates = []
         for vuln in all_vulns:
             cve = vuln["cve"]
             cve_id = cve["id"]
@@ -121,18 +184,19 @@ class CVECheck(BaseCheck):
             desc = _extract_description(cve)
             refs = _extract_references(cve)
 
-            # Skip CVEs that explicitly mention versions higher than detected
-            if detected_ver:
-                # If CVE mentions "Odoo 15.0 and earlier" and we're on 18, it's patched
-                if f"{detected_ver}.0 and earlier" in desc and detected_ver != "15":
-                    continue
-                # Simple heuristic: if description says "Odoo X" and X < detected, skip low-severity
-                import re
-                ver_matches = re.findall(r'Odoo\s+(Community|Enterprise)?\s*(\d+)\.0', desc)
-                if ver_matches:
-                    max_mentioned = max(int(v[1]) for v in ver_matches)
-                    if max_mentioned < int(detected_ver) and severity <= Severity.LOW:
-                        continue
+            applicability = _odoo_version_applicability(cve, normalized)
+            if applicability is False:
+                continue
+            if applicability is None:
+                candidates.append(
+                    {
+                        "id": cve_id,
+                        "reason": "NVD does not provide matching Odoo CPE version data for the detected release.",
+                        "cvss": score,
+                        "references": refs,
+                    }
+                )
+                continue
 
             self.add_finding(
                 title=f"Known CVE: {cve_id}",
@@ -141,4 +205,17 @@ class CVECheck(BaseCheck):
                 remediation="Apply the vendor patch or upgrade to a fixed version. Review the CVE references for specific workaround instructions.",
                 cwe="CWE-1035",
                 references=refs,
+            )
+
+        if candidates:
+            self.result.artifacts["cve_candidates"] = candidates
+            candidate_ids = ", ".join(item["id"] for item in candidates)
+            self.add_finding(
+                title="CVE candidates require environment applicability confirmation",
+                description=f"NVD keyword search returned {len(candidates)} candidate(s) without CPE evidence matching Odoo {normalized or 'unknown'}: {candidate_ids}.",
+                severity=Severity.INFO,
+                remediation="Confirm packaging, edition, module, and fixed-build applicability before treating any candidate as a vulnerability.",
+                references=sorted(
+                    {reference for item in candidates for reference in item["references"]}
+                )[:5],
             )

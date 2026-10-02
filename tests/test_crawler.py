@@ -54,7 +54,7 @@ def test_page_check_reports_controls_without_persisting_field_values() -> None:
     titles = {finding.title for finding in result.findings}
     serialized = result.to_json()
     assert "Included page assessed: /quoteengine" in titles
-    assert "POST form lacks an explicit CSRF token: /quoteengine" in titles
+    assert "POST form has no explicit CSRF field on /quoteengine" in titles
     assert "Content Security Policy does not constrain scripts: /quoteengine" in titles
     assert "do-not-persist" not in serialized
     assert "person@example.test" not in serialized
