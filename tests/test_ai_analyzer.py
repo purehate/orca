@@ -202,3 +202,25 @@ def test_analyzer_retries_one_invalid_model_response() -> None:
 def test_analyzer_rejects_invalid_limit() -> None:
     with pytest.raises(ValueError, match="at least 1"):
         AIAnalyzer(FakeClient(_response()), max_findings=0)
+
+
+def test_analyzer_records_findings_skipped_by_cap() -> None:
+    result = ScanResult(
+        target=TargetMeta(url="https://example.test"),
+        findings=[_finding(), _finding(), _finding()],
+    )
+
+    report, _, _ = AIAnalyzer(FakeClient(_response()), max_findings=1).review(result)
+
+    assert len(report.reviews) == 1
+    assert report.skipped_findings == 2
+    assert report.to_dict()["skipped_findings"] == 2
+
+
+def test_parse_review_accepts_fenced_json_block() -> None:
+    finding = _finding()
+    fenced = f"Here is the review:\n```json\n{_response()}\n```\n"
+
+    review = parse_review(finding, build_prompt(finding), fenced)
+
+    assert review.verdict == "likely"
