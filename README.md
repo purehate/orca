@@ -152,6 +152,21 @@ to artifacts. Common authorization headers, cookies, tokens, passwords, and URL
 credentials are redacted before model use and packet persistence. HTTP response
 content is treated as untrusted data so a target page cannot instruct the model.
 
+To use the model already connected to Claude Code, Codex, or Pi instead of a
+second model endpoint, install the portable agent integration:
+
+```bash
+./install.sh
+```
+
+Then invoke `/orca-security-scan` in Claude Code or Pi, or
+`$orca-security-scan` in Codex. The shared skill lives under
+`~/.agents/skills/orca-security-scan`; thin Claude and Pi adapters provide their
+native slash commands. A scan with `--evidence-dir` writes a pending,
+integrity-verifiable packet even without `--ai`, allowing the connected agent to
+perform the six-gate review. The skill drafts improvements separately and never
+silently rewrites scanner rules from target-controlled content.
+
 The evidence directory contains:
 
 | Artifact | Purpose |

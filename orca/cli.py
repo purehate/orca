@@ -178,7 +178,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--evidence-dir",
-        help="Directory for scan facts, AI review, prompts, responses, hashes, and replay guide",
+        help="Directory for scan facts, review state, hashes, and replay guide; writes a pending packet when --ai is omitted",
     )
     parser.add_argument(
         "--baseline",
@@ -433,6 +433,45 @@ def _run_ai_review(
     return manifest
 
 
+def _write_pending_agent_packet(
+    args: argparse.Namespace,
+    result: ScanResult,
+    delta: Optional[ScanDelta] = None,
+) -> Optional[Path]:
+    """Write deterministic evidence for review by the connected agent."""
+    from rich.console import Console
+
+    from orca.ai import AIReviewReport, EvidencePacketWriter
+
+    console = Console()
+    review = AIReviewReport(
+        provider="connected-agent",
+        model="not-recorded",
+        prompt_version="agent-review-v1",
+        status="pending",
+    )
+    try:
+        manifest = EvidencePacketWriter().write(
+            output_dir=Path(args.evidence_dir),
+            result=result,
+            review=review,
+            prompts={},
+            responses={},
+            replay_command=_build_replay_command(args),
+            delta=delta,
+        )
+    except OSError as exc:
+        error = redact_untrusted_text(str(exc), 2_000)
+        console.print(f"[red][-][/red] Evidence packet could not be written: {error}")
+        return None
+
+    console.print(
+        "[green][+][/green] Evidence packet ready for connected-agent review: "
+        f"{manifest.parent}"
+    )
+    return manifest
+
+
 def _exit_code(findings) -> int:
     severities = [finding.severity for finding in findings]
     if Severity.CRITICAL in severities:
@@ -515,6 +554,8 @@ def main() -> None:
 
     if args.ai:
         _run_ai_review(args, result, delta)
+    elif args.evidence_dir:
+        _write_pending_agent_packet(args, result, delta)
 
     if args.format == "console":
         reporter.print_result(result)

@@ -1,5 +1,6 @@
 import hashlib
 import json
+from argparse import Namespace
 from pathlib import Path
 
 from test_ai_analyzer import FakeClient, _response
@@ -7,6 +8,7 @@ from test_ai_analyzer import FakeClient, _response
 from orca.ai.analyzer import AIAnalyzer
 from orca.ai.packet import EvidencePacketWriter
 from orca.baseline import compare_to_baseline
+from orca.cli import _write_pending_agent_packet
 from orca.findings import Evidence, Finding, ScanResult, Severity, TargetMeta
 
 
@@ -137,3 +139,34 @@ def test_packet_includes_baseline_delta(tmp_path: Path) -> None:
     assert "Fixed: **1**" in (tmp_path / "packet" / "delta.md").read_text(
         encoding="utf-8"
     )
+
+
+def test_connected_agent_packet_does_not_require_second_model(tmp_path: Path) -> None:
+    output_dir = tmp_path / "packet"
+    args = Namespace(
+        evidence_dir=str(output_dir),
+        url="https://example.test",
+        checks=None,
+        skip_checks=None,
+        min_severity=None,
+        rate=1.0,
+        jitter=None,
+        threads=1,
+        timeout=15,
+        crawl_max_pages=50,
+        crawl_depth=2,
+        verify_ssl=True,
+        include_path=[],
+        crawl=False,
+    )
+    result = ScanResult(
+        target=TargetMeta(url="https://example.test"), completed_at="done"
+    )
+
+    manifest = _write_pending_agent_packet(args, result)
+
+    assert manifest == output_dir / "manifest.json"
+    review = json.loads((output_dir / "ai-review.json").read_text(encoding="utf-8"))
+    assert review["provider"] == "connected-agent"
+    assert review["status"] == "pending"
+    assert review["reviews"] == []
