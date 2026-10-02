@@ -43,6 +43,9 @@ Thumbs.db
 report.*
 /tmp/
 
+# Scan results hold target data; keep them out of git
+scans/
+
 # Coverage
 .coverage
 coverage.xml

@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import shlex
 import sys
 from datetime import datetime, timezone
@@ -178,7 +179,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--evidence-dir",
-        help="Directory for scan facts, review state, hashes, and replay guide; writes a pending packet when --ai is omitted",
+        help="Directory for scan facts, review state, hashes, and replay guide (--ai default: scans/<host>/<UTC-timestamp>/orca); writes a pending packet when --ai is omitted",
     )
     parser.add_argument(
         "--baseline",
@@ -387,6 +388,14 @@ def _build_replay_command(args: argparse.Namespace) -> str:
     return shlex.join(command)
 
 
+def _default_evidence_dir(url: str) -> Path:
+    """Return the gitignored scans/<host>/<UTC-timestamp>/orca packet path."""
+    # A path-like host such as ".." must not escape the scans/ tree.
+    host = re.sub(r"[^a-z0-9.-]", "_", urlparse(url).hostname or "").strip(".")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return Path("scans", host or "target", timestamp, "orca")
+
+
 def _run_ai_review(
     args: argparse.Namespace,
     result: ScanResult,
@@ -410,8 +419,7 @@ def _run_ai_review(
         analyzer = AIAnalyzer(client, max_findings=args.ai_max_findings)
         review_input = findings_for_review(result, delta) if delta else result
         review, prompts, responses = analyzer.review(review_input)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        output_dir = Path(args.evidence_dir or f"orca-evidence-{timestamp}")
+        output_dir = Path(args.evidence_dir or _default_evidence_dir(result.target.url))
         manifest = EvidencePacketWriter().write(
             output_dir=output_dir,
             result=result,

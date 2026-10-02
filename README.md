@@ -131,9 +131,12 @@ With local Ollama:
 
 ```bash
 ollama pull qwen3:0.6b
-orca -u https://target.odoo.com --ai \
-  --evidence-dir evidence/external-review
+orca -u https://target.odoo.com --ai
 ```
+
+The packet goes to `scans/target.odoo.com/<UTC-timestamp>/orca/` under the
+current directory unless `--evidence-dir` names another path. This repository's
+`.gitignore` excludes `scans/` because packets hold target data.
 
 With a private OpenAI-compatible endpoint (including vLLM):
 
@@ -143,8 +146,7 @@ export ORCA_AI_ENDPOINT=http://private-model.example:8000/v1
 export ORCA_AI_MODEL=your-model-name
 export ORCA_AI_API_KEY='set-this-only-if-your-endpoint-requires-it'
 
-orca -u https://target.odoo.com --ai \
-  --evidence-dir evidence/external-review
+orca -u https://target.odoo.com --ai
 ```
 
 API keys are read only from the named environment variable and are never written
@@ -190,9 +192,8 @@ introduced or severity-increased findings:
 
 ```bash
 orca -u https://target.odoo.com --ai \
-  --baseline evidence/previous-review \
-  --fail-on-new high \
-  --evidence-dir evidence/current-review
+  --baseline scans/target.odoo.com/20261001T090000Z/orca \
+  --fail-on-new high
 ```
 
 This adds `delta.json` and `delta.md` with new, fixed, changed, and unchanged

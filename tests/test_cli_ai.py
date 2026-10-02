@@ -1,6 +1,9 @@
 import argparse
 import json
+import re
 from pathlib import Path
+
+import pytest
 
 from orca import ai as ai_package
 from orca.cli import (
@@ -102,6 +105,58 @@ def test_run_ai_review_writes_evidence_packet(
     assert review["status"] == "complete"
     assert len(review["reviews"]) == 1
     assert review["skipped_findings"] == 0
+
+
+@pytest.mark.parametrize(
+    ("cli_url", "target_url", "host_dir"),
+    [
+        (
+            "https://operator:secret@Example.TEST:8069/odoo",
+            "https://operator:secret@Example.TEST:8069/odoo",
+            "example.test",
+        ),
+        # Target adds the scheme to a bare -u host; the packet path must follow.
+        ("target.odoo.com:8069", "https://target.odoo.com:8069", "target.odoo.com"),
+        # A path-like host must not escape the gitignored scans/ tree.
+        ("http://..", "http://..", "target"),
+    ],
+)
+def test_run_ai_review_defaults_evidence_dir_under_scans(
+    tmp_path: Path, monkeypatch, cli_url: str, target_url: str, host_dir: str
+) -> None:
+    monkeypatch.setattr(ai_package, "build_client", lambda **kwargs: _FakeClient())
+    monkeypatch.chdir(tmp_path)
+    args = argparse.Namespace(
+        url=cli_url,
+        checks=None,
+        skip_checks=None,
+        min_severity="medium",
+        rate=1.0,
+        jitter=None,
+        threads=1,
+        timeout=10,
+        verify_ssl=True,
+        include_path=[],
+        crawl=False,
+        crawl_max_pages=50,
+        crawl_depth=2,
+        ai_provider="ollama",
+        ai_model="test-model",
+        ai_endpoint=None,
+        ai_api_key_env="ORCA_AI_API_KEY",
+        ai_timeout=5.0,
+        ai_max_findings=10,
+        evidence_dir=None,
+    )
+    result = ScanResult(target=TargetMeta(url=target_url), findings=[_finding()])
+
+    manifest = _run_ai_review(args, result)
+
+    assert manifest is not None
+    scans, host, timestamp, packet = manifest.parent.parts
+    assert (scans, host, packet) == ("scans", host_dir, "orca")
+    assert re.fullmatch(r"\d{8}T\d{6}Z", timestamp)
+    assert (tmp_path / manifest).is_file()
 
 
 def test_replay_command_excludes_credentials_and_ai_connection_details() -> None:
